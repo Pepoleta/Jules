@@ -44,7 +44,9 @@ def main():
                 # Save uploaded files to a temporary directory
                 temp_dir = tempfile.mkdtemp()
                 for uploaded_file in uploaded_files:
-                    file_path = os.path.join(temp_dir, uploaded_file.name)
+                    # Sanitize filename to prevent path traversal
+                    safe_filename = os.path.basename(uploaded_file.name)
+                    file_path = os.path.join(temp_dir, safe_filename)
                     with open(file_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
                     file_paths.append(file_path)
