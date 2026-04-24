@@ -18,8 +18,19 @@ class GeminiBot:
         options.add_argument("--profile-directory=Default")
         
         # Initialize the driver
-        driver = uc.Chrome(options=options)
-        return driver
+        try:
+            driver = uc.Chrome(options=options)
+            return driver
+        except Exception as e:
+            import re
+            match = re.search(r"Current browser version is (\d+)", str(e))
+            if match:
+                version_main = int(match.group(1))
+                print(f"Driver initialization failed due to version mismatch. Retrying with version_main={version_main}...")
+                driver = uc.Chrome(options=options, version_main=version_main)
+                return driver
+            else:
+                raise
 
     def navigate_to_gemini(self):
         print("Navigating to Gemini...")
