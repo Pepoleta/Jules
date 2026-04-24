@@ -28,7 +28,7 @@ def main():
     with st.form("gemini_form"):
         prompt_text = st.text_area("Enter your prompt:", height=150)
         uploaded_files = st.file_uploader("Upload files (PDF, images, etc.)", accept_multiple_files=True)
-        
+
         submit_button = st.form_submit_button("Send to Gemini")
 
     if submit_button:
@@ -38,20 +38,22 @@ def main():
 
         with st.spinner("Processing..."):
             bot = get_bot()
-            
-            file_paths = []
-            if uploaded_files:
-                # Save uploaded files to a temporary directory
-                temp_dir = tempfile.mkdtemp()
-                for uploaded_file in uploaded_files:
-                    file_path = os.path.join(temp_dir, uploaded_file.name)
-                    with open(file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-                    file_paths.append(file_path)
-            
-            st.info("Sending request to Gemini...")
-            response = bot.send_prompt(prompt_text, file_paths)
-            
+
+            import contextlib
+
+            # Save uploaded files to a temporary directory if any
+            with tempfile.TemporaryDirectory() if uploaded_files else contextlib.nullcontext() as temp_dir:
+                file_paths = []
+                if uploaded_files:
+                    for uploaded_file in uploaded_files:
+                        file_path = os.path.join(temp_dir, uploaded_file.name)
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        file_paths.append(file_path)
+
+                st.info("Sending request to Gemini...")
+                response = bot.send_prompt(prompt_text, file_paths)
+
             if response:
                 st.subheader("Response:")
                 st.write(response)
