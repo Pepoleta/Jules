@@ -16,7 +16,7 @@ class GeminiBot:
         # Use a persistent user data directory for Google login session
         options.add_argument(f"--user-data-dir={self.profile_dir}")
         options.add_argument("--profile-directory=Default")
-        
+
         # Initialize the driver
         driver = uc.Chrome(options=options)
         return driver
@@ -24,7 +24,7 @@ class GeminiBot:
     def navigate_to_gemini(self):
         print("Navigating to Gemini...")
         self.driver.get("https://gemini.google.com/app")
-        
+
         # We check for the presence of the main chat input area as a sign of being logged in.
         try:
             print("Waiting for chat input area to be visible (sign of successful login)...")
@@ -46,11 +46,14 @@ class GeminiBot:
             input_area = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "rich-textarea"))
             )
-            
+
             # Type the text. We use send_keys.
             input_area.send_keys(text)
             time.sleep(1)
-            
+
+            # Capture initial message count
+            initial_count = len(self.driver.find_elements(By.CSS_SELECTOR, "message-content"))
+
             # Find and click the send button, or press Enter
             try:
                 send_button = WebDriverWait(self.driver, 5).until(
@@ -60,9 +63,9 @@ class GeminiBot:
             except:
                  # fallback to Enter
                  input_area.send_keys(Keys.ENTER)
-                 
+
             print("Prompt sent.")
-            return self._wait_for_response()
+            return self._wait_for_response(initial_count)
 
         except Exception as e:
             print(f"Error sending prompt: {e}")
@@ -74,27 +77,39 @@ class GeminiBot:
             file_input = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='file']"))
             )
-            
+
             file_paths_str = "\n".join(file_paths)
             file_input.send_keys(file_paths_str)
             print("Files uploaded.")
-            
+
         except Exception as e:
              print(f"Error uploading files: {e}")
 
-    def _wait_for_response(self):
+    def _wait_for_response(self, initial_count=0):
         print("Waiting for response...")
         try:
-            time.sleep(5)
-            time.sleep(10) # Wait for generation to finish
-            
+            # Wait for a new message to appear
+            WebDriverWait(self.driver, 30).until(
+                lambda d: len(d.find_elements(By.CSS_SELECTOR, "message-content")) > initial_count
+            )
+
+            # Get the new response
             responses = self.driver.find_elements(By.CSS_SELECTOR, "message-content")
-            if responses:
-                last_response = responses[-1]
-                return last_response.text
-            else:
-                return "Could not find response text."
-                
+            last_response = responses[-1]
+
+            # Wait for text to be non-empty and stable (generation finished)
+            last_text = ""
+            timeout = time.time() + 30
+            while time.time() < timeout:
+                current_text = last_response.text.strip()
+                if current_text and current_text == last_text:
+                    # Text is non-empty and hasn't changed since last poll
+                    return current_text
+                last_text = current_text
+                time.sleep(1) # Poll interval for stability check
+
+            return last_response.text
+
         except Exception as e:
              print(f"Error waiting for response: {e}")
              return None
