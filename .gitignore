@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+chrome_profile/
+.agents/
+*.log
+.DS_Store
