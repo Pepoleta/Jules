@@ -29,6 +29,10 @@ def main():
         prompt_text = st.text_area("Enter your prompt:", height=150)
         uploaded_files = st.file_uploader("Upload files (PDF, images, etc.)", accept_multiple_files=True)
         
+        # Bot options
+        st.subheader("Opciones")
+        model_choice = st.radio("Selecciona el modelo de Gemini:", ["Rápido", "Pensar", "Pro"], horizontal=True, index=0)
+        
         submit_button = st.form_submit_button("Send to Gemini")
 
     if submit_button:
@@ -50,6 +54,10 @@ def main():
                     file_paths.append(file_path)
             
             st.info("Sending request to Gemini...")
+            
+            # Set the model before sending
+            bot.set_model(model_choice)
+            
             response = bot.send_prompt(prompt_text, file_paths)
             
             if response:
