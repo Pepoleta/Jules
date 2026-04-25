@@ -1,0 +1,47 @@
+*&---------------------------------------------------------------------*
+*& Include          ZATZ_PARSER_CBT_GRALTOP
+*&---------------------------------------------------------------------*
+
+INCLUDE: /auditar/valores,
+         /auditar/estados,
+         /auditar/tipcomp.
+
+TYPE-POOLS: abap.
+
+TABLES: /auditar/tjsc,
+        /auditar/hees.
+
+CONSTANTS: c_numbers(10)   VALUE '0123456789',
+           c_numbersb(11)  VALUE ' 0123456789',
+           c_numbersbs(12) VALUE '- 0123456789'.
+
+TYPES: BEGIN OF tys_tokens,
+         token(800) TYPE c,
+       END OF tys_tokens,
+       tyt_tokens  TYPE STANDARD TABLE OF tys_tokens,
+
+       tyt_nrotarj TYPE TABLE OF /auditar/nrotarj,
+
+       tys_archivo TYPE string,
+       tyt_archivo TYPE TABLE OF tys_archivo,
+
+       BEGIN OF tys_grupxestab,
+         valor LIKE /auditar/grxes-valor,
+       END OF tys_grupxestab,
+       tyt_grupxestab TYPE TABLE OF tys_grupxestab,
+
+       BEGIN OF tys_grupxestab_buff,
+         sociedad  LIKE /auditar/grxes-sociedad,
+         nrotarj   LIKE /auditar/grxes-nrotarj,
+         nroestab  LIKE /auditar/grxes-nroestab,
+         codgrupo  LIKE /auditar/grxes-codgrupo,
+         valor     LIKE /auditar/grxes-valor,
+         no_existe,
+       END OF tys_grupxestab_buff,
+       tyt_grupxestab_buff TYPE TABLE OF tys_grupxestab_buff.
+
+
+DATA: gv_imp_total    TYPE /auditar/importe, "Imp.tot.oper del arch(cabecera)
+      gv_cant_ope     TYPE i, "Cant.tot.de oper. del arch(cabecera)
+      gv_clave_formato(7),    "Clave de 7 letras que identifica el formato
+      gv_no_controlar.

@@ -1,0 +1,768 @@
+*&---------------------------------------------------------------------*
+*& Report  ZATZ_PARSER_CBT_CLCOBR
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+
+INCLUDE zatz_parser_cbt_clcobrtop.
+
+INCLUDE zatz_parser_cbt_graltop.
+INCLUDE zatz_parser_cbt_gralf01.
+INCLUDE zatz_rutinas_parser_json.
+
+*&---------------------------------------------------------------------*
+*&      Form  inicio_0001
+*&---------------------------------------------------------------------*
+FORM inicio_0001 TABLES pt_detfile   TYPE /auditar/ia_tyt_file
+                        pt_totfile   TYPE /auditar/ia_tyt_file
+                        pt_auxfile   TYPE /auditar/ia_tyt_file_multi
+                  USING pv_soc
+                        pv_parch
+               CHANGING ps_param_out TYPE /auditar/ia_tys_param_out_pre
+                        pt_msg       TYPE /auditar/ia_tyt_msg.
+  DATA: lv_formato_json,
+        lv_json         TYPE string, "CMP/ui2/cl_json=>json,
+        lv_detalle(30),
+        ls_data_aux     TYPE tys_json,
+        ls_data         TYPE tyt_json,
+        ls_registro     TYPE string,
+        lt_archivo      TYPE tyt_archivo,
+        lv_level        TYPE i,
+        ls_detfile      TYPE /auditar/ia_tys_file,
+        lt_detfile      TYPE /auditar/ia_tyt_file,
+        ls_cabecera     TYPE tys_cabecera,
+        ls_renglon      TYPE tys_renglon,
+        ls_renglon2     TYPE tys_renglon,
+        lt_campos       TYPE TABLE OF string,
+        lv_idtxext      TYPE string,
+        lv_importe_acum TYPE /auditar/importe,
+        lv_importe      TYPE /auditar/importe,
+        lv_count        TYPE i,
+        lv_len          TYPE i,
+        lv_substr       TYPE string,
+        lv_valid        TYPE abap_bool VALUE abap_true,
+        lv_root         TYPE REF TO json_value,    "CMP
+        lv_document     TYPE REF TO json_document, "CMP
+        lo_data        TYPE REF TO data,
+        lo_exception   TYPE REF TO cx_root,
+        lv_cambiar_desc.
+
+  FIELD-SYMBOLS: <fs_detfile>          TYPE /auditar/ia_tys_file,
+                 <fs_archivo>          TYPE tys_archivo,
+                 <fs_cabecera>         TYPE tys_cabecera,
+                 <fs_medpag>           TYPE tys_medpag,
+                 <fs_cupon>            TYPE tys_cupones,
+                 <fs_detallecupon>     TYPE tys_detallecupon,
+                 <fs_datoscupon>       TYPE tys_datoscupon,
+                 <fs_result>           TYPE string.
+
+  READ TABLE pt_detfile ASSIGNING <fs_detfile> INDEX 1.
+  IF <fs_detfile>-linea CP '{*'.
+    lv_formato_json = 'X'.
+  ENDIF.
+
+  IF lv_formato_json = 'X'.
+
+    REFRESH lt_detfile.
+
+    LOOP AT pt_detfile ASSIGNING <fs_detfile>.
+
+      lv_valid = abap_true.
+      lv_json = <fs_detfile>-linea.
+
+      lv_detalle = lv_json.
+      IF lv_json IS INITIAL.
+        DELETE pt_detfile.
+        CONTINUE.
+      ENDIF.
+
+      "Esto es para sacar enters embebidos dentro de los mensajes
+      REPLACE ALL OCCURRENCES OF '\n' IN lv_json WITH ' '.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf+0(1) IN lv_json WITH ' '.
+
+      TRY.
+          json_document=>parse( EXPORTING json = lv_json RECEIVING document = lv_document ).
+          lv_root = lv_document->root.
+
+          CLEAR ls_data_aux.
+          PERFORM mapear_datos USING    lv_root
+                               CHANGING ls_data_aux.
+
+          ASSIGN ls_data_aux-cabecera TO <fs_cabecera>.
+
+          IF <fs_cabecera>-tipodoc <> '5'.
+
+            CLEAR ls_detfile.
+            "Asigno datos de cabecera comunes
+            ls_renglon-idpos     = <fs_cabecera>-idpos.
+            ls_renglon-tienda    = <fs_cabecera>-tienda.
+            ls_renglon-fecha     = <fs_cabecera>-fecha.
+            ls_renglon-hora      = <fs_cabecera>-hora.
+            ls_renglon-seriepos  = <fs_cabecera>-seriepos.
+            ls_renglon-tipodoc   = <fs_cabecera>-tipodoc.
+            ls_renglon-folio     = <fs_cabecera>-folio.
+            lv_idtxext           = ls_renglon-idpos.
+
+            "recorro medios de pago
+            CLEAR lv_cambiar_desc.
+
+            LOOP AT <fs_cabecera>-medpag ASSIGNING <fs_medpag>.
+
+              "Si es un medio de pago válido agrego el mismo
+              IF <fs_medpag>-mediopago <> '5'
+                AND <fs_medpag>-mediopago <> '8'
+                AND <fs_medpag>-mediopago <> '9'
+                AND <fs_medpag>-mediopago <> '10'
+                AND <fs_medpag>-mediopago <> '11'
+                AND <fs_medpag>-mediopago <> '13'
+                AND <fs_medpag>-mediopago <> '18'
+                AND <fs_medpag>-mediopago <> '19'
+                AND <fs_medpag>-mediopago <> 'CU'.
+
+                ls_renglon-moneda    = <fs_medpag>-moneda.
+                ls_renglon-cardnr    = <fs_medpag>-cardnr.
+                ls_renglon-idtxext   = <fs_medpag>-idtxext.
+                ls_renglon-importe   = <fs_medpag>-importe.
+                ls_renglon-mediopago = <fs_medpag>-mediopago.
+                lv_idtxext           = ls_renglon-idtxext.
+
+                CONCATENATE ls_renglon-idpos ls_renglon-tienda ls_renglon-fecha ls_renglon-hora ls_renglon-seriepos
+                            ls_renglon-tipodoc ls_renglon-folio ls_renglon-moneda ls_renglon-cardnr
+                            ls_renglon-idtxext ls_renglon-importe ls_renglon-mediopago INTO ls_detfile-linea SEPARATED BY gc_field_sep.
+
+                APPEND ls_detfile TO lt_detfile.
+              ENDIF.
+
+              IF <fs_medpag>-mediopago = '6'
+                OR <fs_medpag>-mediopago = '7'
+                OR <fs_medpag>-mediopago = '8'.
+
+                lv_cambiar_desc = 'X'.
+              ENDIF.
+
+            ENDLOOP.
+
+            CLEAR ls_renglon2.
+            ls_renglon2-idpos = ls_renglon-idpos.
+            ls_renglon2-tienda = ls_renglon-tienda.
+            ls_renglon2-fecha = ls_renglon-fecha.
+            ls_renglon2-hora = ls_renglon-hora.
+            ls_renglon2-seriepos = ls_renglon-seriepos.
+            ls_renglon2-tipodoc = ls_renglon-tipodoc.
+            ls_renglon2-folio = ls_renglon-folio.
+            lv_importe_acum = 0.
+            ls_renglon2-moneda    = 'CLP'.
+            ls_renglon2-cardnr    = ''.
+
+            IF lv_cambiar_desc = 'X'.
+              ls_renglon2-idtxext = ls_renglon2-idpos.
+            ELSE.
+              ls_renglon2-idtxext   = lv_idtxext.
+            ENDIF.
+
+            ls_renglon2-mediopago = 'FIDELIDAD'.
+
+            "recorro cupones
+            LOOP AT <fs_cabecera>-cupones ASSIGNING <fs_cupon>.
+
+              LOOP AT <fs_cupon>-detallecupon ASSIGNING <fs_detallecupon>.
+                "Si es un cupón válido agrego el mismo
+                IF <fs_detallecupon>-pagaiva = 0.
+                  lv_importe   = <fs_cupon>-datoscupon-valormontofijo_aldia.
+                  lv_importe_acum = lv_importe_acum + lv_importe.
+                ENDIF.
+              ENDLOOP.
+            ENDLOOP.
+
+            IF lv_importe_acum <> 0.
+              ls_renglon2-importe = lv_importe_acum.
+
+              CONCATENATE ls_renglon2-idpos ls_renglon2-tienda ls_renglon2-fecha ls_renglon2-hora ls_renglon2-seriepos
+                          ls_renglon2-tipodoc ls_renglon2-folio ls_renglon2-moneda ls_renglon2-cardnr
+                          ls_renglon2-idtxext ls_renglon2-importe ls_renglon2-mediopago INTO ls_detfile-linea SEPARATED BY gc_field_sep.
+
+              APPEND ls_detfile TO lt_detfile.
+            ENDIF.
+
+          ENDIF.
+        CATCH cx_root INTO lo_exception.
+          " Capturar la excepción si el JSON es inválido
+          APPEND <fs_detfile> TO lt_detfile.
+      ENDTRY.
+
+
+    ENDLOOP.
+
+    REFRESH pt_detfile.
+    pt_detfile[] = lt_detfile[].
+  ENDIF.
+
+ENDFORM.                    "inicio_0001
+
+*&---------------------------------------------------------------------*
+*&      Form  inicio_0002
+*&---------------------------------------------------------------------*
+FORM inicio_0002 TABLES pt_detfile   TYPE /auditar/ia_tyt_file
+                        pt_totfile   TYPE /auditar/ia_tyt_file
+                        pt_auxfile   TYPE /auditar/ia_tyt_file_multi
+                  USING pv_soc
+                        pv_parch
+               CHANGING ps_param_out TYPE /auditar/ia_tys_param_out_pre
+                        pt_msg       TYPE /auditar/ia_tyt_msg.
+
+  DATA: lv_formato_json,
+        lv_formato_json_orig,
+        lv_formato_json_new,
+        lv_json         TYPE string, "CMP/ui2/cl_json=>json,
+        lv_detalle(30),
+        ls_data_aux     TYPE tys_json,
+        ls_data         TYPE tyt_json,
+        ls_data_aux_new TYPE tys_json_new,
+        ls_data_new     TYPE tyt_json_new,
+        ls_registro     TYPE string,
+        lt_archivo      TYPE tyt_archivo,
+        lv_level        TYPE i,
+        ls_detfile      TYPE /auditar/ia_tys_file,
+        lt_detfile      TYPE /auditar/ia_tyt_file,
+        ls_cabecera     TYPE tys_cabecera,
+        ls_renglon      TYPE tys_renglon,
+        ls_renglon2     TYPE tys_renglon,
+        lt_campos       TYPE TABLE OF string,
+        lv_idtxext      TYPE string,
+        lv_importe_acum TYPE /auditar/importe,
+        lv_importe      TYPE /auditar/importe,
+        lv_count        TYPE i,
+        lv_len          TYPE i,
+        lv_substr       TYPE string,
+        lv_valid        TYPE abap_bool VALUE abap_true,
+        lv_root         TYPE REF TO json_value,    "CMP
+        lv_document     TYPE REF TO json_document, "CMP
+        lo_data         TYPE REF TO data,
+        lo_exception   TYPE REF TO cx_root,
+        lv_cambiar_desc.
+
+  FIELD-SYMBOLS: <fs_detfile>          TYPE /auditar/ia_tys_file,
+                 <fs_archivo>          TYPE tys_archivo,
+                 <fs_datos>            TYPE tys_datos,
+                 <fs_cabecera>         TYPE tys_cabecera,
+                 <fs_medpag>           TYPE tys_medpag,
+                 <fs_cupon>            TYPE tys_cupones,
+                 <fs_detallecupon>     TYPE tys_detallecupon,
+                 <fs_datoscupon>       TYPE tys_datoscupon,
+                 <fs_result>           TYPE string.
+
+  READ TABLE pt_detfile ASSIGNING <fs_detfile> INDEX 1.
+  IF <fs_detfile>-linea CP '{*'.
+    lv_formato_json = 'X'.
+    " Determino si es Json viejo o nuevo
+    IF <fs_detfile>-linea CS '"tipo": "venta"'.
+      lv_formato_json_new = 'X'.
+    ELSE.
+      lv_formato_json_orig = 'X'.
+    ENDIF.
+  ENDIF.
+
+  IF lv_formato_json = 'X'.
+
+    REFRESH lt_detfile.
+
+    LOOP AT pt_detfile ASSIGNING <fs_detfile>.
+
+      lv_valid = abap_true.
+      lv_json = <fs_detfile>-linea.
+
+      lv_detalle = lv_json.
+      IF lv_json IS INITIAL.
+        DELETE pt_detfile.
+        CONTINUE.
+      ENDIF.
+
+      "Esto es para sacar enters embebidos dentro de los mensajes
+      REPLACE ALL OCCURRENCES OF '\n' IN lv_json WITH ' '.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf+0(1) IN lv_json WITH ' '.
+
+      TRY.
+          json_document=>parse( EXPORTING json = lv_json RECEIVING document = lv_document ).
+          lv_root = lv_document->root.
+
+          CLEAR ls_data_aux.
+          CLEAR ls_data_aux_new.
+
+          IF lv_formato_json_orig = 'X'.
+            PERFORM mapear_datos USING    lv_root
+                                 CHANGING ls_data_aux.
+            ASSIGN ls_data_aux-cabecera TO <fs_cabecera>.
+
+
+          ELSE.
+            PERFORM mapear_datos USING    lv_root
+                                 CHANGING ls_data_aux_new.
+            "ASSIGN ls_data_aux_new-datos    TO <fs_datos>.
+            ASSIGN <fs_datos>-cabecera      TO <fs_cabecera>.
+
+          ENDIF.
+
+
+          IF <fs_cabecera>-tipodoc <> '5'.
+
+            CLEAR ls_detfile.
+            "Asigno datos de cabecera comunes
+            ls_renglon-idpos     = <fs_cabecera>-idpos.
+            ls_renglon-tienda    = <fs_cabecera>-tienda.
+            ls_renglon-fecha     = <fs_cabecera>-fecha.
+            ls_renglon-hora      = <fs_cabecera>-hora.
+            ls_renglon-seriepos  = <fs_cabecera>-seriepos.
+            ls_renglon-tipodoc   = <fs_cabecera>-tipodoc.
+            ls_renglon-folio     = <fs_cabecera>-folio.
+            lv_idtxext           = ls_renglon-idpos.
+
+            "recorro medios de pago
+            CLEAR lv_cambiar_desc.
+
+            LOOP AT <fs_cabecera>-medpag ASSIGNING <fs_medpag>.
+
+              "Si es un medio de pago válido agrego el mismo
+              IF <fs_medpag>-mediopago <> '5'
+                AND <fs_medpag>-mediopago <> '8'
+                AND <fs_medpag>-mediopago <> '9'
+                AND <fs_medpag>-mediopago <> '10'
+                AND <fs_medpag>-mediopago <> '11'
+                AND <fs_medpag>-mediopago <> '13'
+                AND <fs_medpag>-mediopago <> '18'
+                AND <fs_medpag>-mediopago <> '19'
+                AND <fs_medpag>-mediopago <> 'CU'.
+
+                ls_renglon-moneda    = <fs_medpag>-moneda.
+                ls_renglon-cardnr    = <fs_medpag>-cardnr.
+                ls_renglon-idtxext   = <fs_medpag>-idtxext.
+                ls_renglon-importe   = <fs_medpag>-importe.
+                ls_renglon-mediopago = <fs_medpag>-mediopago.
+                lv_idtxext           = ls_renglon-idtxext.
+
+                CONCATENATE ls_renglon-idpos ls_renglon-tienda ls_renglon-fecha ls_renglon-hora ls_renglon-seriepos
+                            ls_renglon-tipodoc ls_renglon-folio ls_renglon-moneda ls_renglon-cardnr
+                            ls_renglon-idtxext ls_renglon-importe ls_renglon-mediopago INTO ls_detfile-linea SEPARATED BY gc_field_sep.
+
+                APPEND ls_detfile TO lt_detfile.
+              ENDIF.
+
+              IF <fs_medpag>-mediopago = '6'
+                OR <fs_medpag>-mediopago = '7'
+                OR <fs_medpag>-mediopago = '8'.
+
+                lv_cambiar_desc = 'X'.
+              ENDIF.
+
+            ENDLOOP.
+
+            CLEAR ls_renglon2.
+            ls_renglon2-idpos = ls_renglon-idpos.
+            ls_renglon2-tienda = ls_renglon-tienda.
+            ls_renglon2-fecha = ls_renglon-fecha.
+            ls_renglon2-hora = ls_renglon-hora.
+            ls_renglon2-seriepos = ls_renglon-seriepos.
+            ls_renglon2-tipodoc = ls_renglon-tipodoc.
+            ls_renglon2-folio = ls_renglon-folio.
+            lv_importe_acum = 0.
+            ls_renglon2-moneda    = 'CLP'.
+            ls_renglon2-cardnr    = ''.
+
+            IF lv_cambiar_desc = 'X'.
+              ls_renglon2-idtxext = ls_renglon2-idpos.
+            ELSE.
+              ls_renglon2-idtxext   = lv_idtxext.
+            ENDIF.
+
+            ls_renglon2-mediopago = 'FIDELIDAD'.
+
+            "recorro cupones
+            LOOP AT <fs_cabecera>-cupones ASSIGNING <fs_cupon>.
+
+              LOOP AT <fs_cupon>-detallecupon ASSIGNING <fs_detallecupon>.
+                "Si es un cupón válido agrego el mismo
+                IF <fs_detallecupon>-pagaiva = 0.
+                  lv_importe   = <fs_cupon>-datoscupon-valormontofijo_aldia.
+                  lv_importe_acum = lv_importe_acum + lv_importe.
+                ENDIF.
+              ENDLOOP.
+            ENDLOOP.
+
+            IF lv_importe_acum <> 0.
+              ls_renglon2-importe = lv_importe_acum.
+
+              CONCATENATE ls_renglon2-idpos ls_renglon2-tienda ls_renglon2-fecha ls_renglon2-hora ls_renglon2-seriepos
+                          ls_renglon2-tipodoc ls_renglon2-folio ls_renglon2-moneda ls_renglon2-cardnr
+                          ls_renglon2-idtxext ls_renglon2-importe ls_renglon2-mediopago INTO ls_detfile-linea SEPARATED BY gc_field_sep.
+
+              APPEND ls_detfile TO lt_detfile.
+            ENDIF.
+
+          ENDIF.
+        CATCH cx_root INTO lo_exception.
+          " Capturar la excepción si el JSON es inválido
+          APPEND <fs_detfile> TO lt_detfile.
+      ENDTRY.
+
+
+    ENDLOOP.
+
+    REFRESH pt_detfile.
+    pt_detfile[] = lt_detfile[].
+  ENDIF.
+
+ENDFORM.                    "inicio_0002
+
+
+*&---------------------------------------------------------------------*
+*&      Form  inicio_0003
+*&---------------------------------------------------------------------*
+FORM inicio_0003 TABLES pt_detfile   TYPE /auditar/ia_tyt_file
+                        pt_totfile   TYPE /auditar/ia_tyt_file
+                        pt_auxfile   TYPE /auditar/ia_tyt_file_multi
+                  USING pv_soc
+                        pv_parch
+               CHANGING ps_param_out TYPE /auditar/ia_tys_param_out_pre
+                        pt_msg       TYPE /auditar/ia_tyt_msg.
+
+  DATA: lv_formato_json,
+        lv_formato_json_orig,
+        lv_formato_json_new,
+        lv_json         TYPE string, "CMP/ui2/cl_json=>json,
+        lv_detalle(30),
+        ls_data_aux     TYPE tys_json,
+        ls_data         TYPE tyt_json,
+        ls_data_aux_new TYPE tys_json_new,
+        ls_data_new     TYPE tyt_json_new,
+        ls_registro     TYPE string,
+        lt_archivo      TYPE tyt_archivo,
+        lv_level        TYPE i,
+        ls_detfile      TYPE /auditar/ia_tys_file,
+        lt_detfile      TYPE /auditar/ia_tyt_file,
+        ls_cabecera     TYPE tys_cabecera,
+        ls_renglon      TYPE tys_renglon,
+        ls_renglon2     TYPE tys_renglon,
+        lt_campos       TYPE TABLE OF string,
+        lv_idtxext      TYPE string,
+        lv_importe_acum TYPE /auditar/importe,
+        lv_importe      TYPE /auditar/importe,
+        lv_count        TYPE i,
+        lv_len          TYPE i,
+        lv_substr       TYPE string,
+        lv_valid        TYPE abap_bool VALUE abap_true,
+        lv_root         TYPE REF TO json_value,    "CMP
+        lv_document     TYPE REF TO json_document, "CMP
+        lo_data         TYPE REF TO data,
+        lo_exception   TYPE REF TO cx_root,
+        lv_cambiar_desc,
+        " --- NUEVAS VARIABLES PARA LÓGICA DE IGNORADO ---
+        lt_parvarios       TYPE /auditar/dparvarios_t,
+        lv_valaper         TYPE /auditar/dparv-valaper,
+        lt_campos_plano    TYPE TABLE OF string,
+        lv_idpos           TYPE string,
+        lv_mediopago_plano TYPE string,
+        lv_cardend_plano   TYPE string,
+        lv_dummy           TYPE string,
+        lt_idpos_ignorar   TYPE TABLE OF string.
+
+  FIELD-SYMBOLS: <fs_detfile>          TYPE /auditar/ia_tys_file,
+                 <fs_archivo>          TYPE tys_archivo,
+                 <fs_datos>            TYPE tys_datos,
+                 <fs_cabecera>         TYPE tys_cabecera,
+                 <fs_medpag>           TYPE tys_medpag,
+                 <fs_cupon>            TYPE tys_cupones,
+                 <fs_detallecupon>     TYPE tys_detallecupon,
+                 <fs_datoscupon>       TYPE tys_datoscupon,
+                 <fs_parv>             TYPE /auditar/dparv,
+                 <fs_result>           TYPE string.
+
+  READ TABLE pt_detfile ASSIGNING <fs_detfile> INDEX 1.
+  IF <fs_detfile>-linea CP '{*'.
+    lv_formato_json = 'X'.
+    " Determino si es Json viejo o nuevo
+    IF <fs_detfile>-linea CS '"tipo": "venta"'.
+      lv_formato_json_new = 'X'.
+    ELSE.
+      lv_formato_json_orig = 'X'.
+    ENDIF.
+  ENDIF.
+
+  IF lv_formato_json = 'X'.
+
+    REFRESH lt_detfile.
+
+    LOOP AT pt_detfile ASSIGNING <fs_detfile>.
+
+      lv_valid = abap_true.
+      lv_json = <fs_detfile>-linea.
+
+      lv_detalle = lv_json.
+      IF lv_json IS INITIAL.
+        DELETE pt_detfile.
+        CONTINUE.
+      ENDIF.
+
+      "Esto es para sacar enters embebidos dentro de los mensajes
+      REPLACE ALL OCCURRENCES OF '\n' IN lv_json WITH ' '.
+      REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf+0(1) IN lv_json WITH ' '.
+
+      TRY.
+          json_document=>parse( EXPORTING json = lv_json RECEIVING document = lv_document ).
+          lv_root = lv_document->root.
+
+          CLEAR ls_data_aux.
+          CLEAR ls_data_aux_new.
+
+          IF lv_formato_json_orig = 'X'.
+            PERFORM mapear_datos USING    lv_root
+                                 CHANGING ls_data_aux.
+            ASSIGN ls_data_aux-cabecera TO <fs_cabecera>.
+
+          ELSE.
+            PERFORM mapear_datos USING    lv_root
+                                 CHANGING ls_data_aux_new.
+            ASSIGN ls_data_aux_new-datos    TO <fs_datos>.
+            ASSIGN <fs_datos>-cabecera      TO <fs_cabecera>.
+
+          ENDIF.
+          IF <fs_cabecera>-tipodoc <> '5'.
+
+            CLEAR ls_detfile.
+            "Asigno datos de cabecera comunes
+            ls_renglon-idpos     = <fs_cabecera>-idpos.
+            ls_renglon-tienda    = <fs_cabecera>-tienda.
+            ls_renglon-fecha     = <fs_cabecera>-fecha.
+            ls_renglon-hora      = <fs_cabecera>-hora.
+            ls_renglon-seriepos  = <fs_cabecera>-seriepos.
+            ls_renglon-tipodoc   = <fs_cabecera>-tipodoc.
+            ls_renglon-folio     = <fs_cabecera>-folio.
+            lv_idtxext           = ls_renglon-idpos.
+            "recorro medios de pago
+            CLEAR lv_cambiar_desc.
+
+            LOOP AT <fs_cabecera>-medpag ASSIGNING <fs_medpag>.
+
+              "Si es un medio de pago válido agrego el mismo
+              IF <fs_medpag>-mediopago <> '5'
+                AND <fs_medpag>-mediopago <> '8'
+                AND <fs_medpag>-mediopago <> '9'
+                AND <fs_medpag>-mediopago <> '10'
+                AND <fs_medpag>-mediopago <> '11'
+                AND <fs_medpag>-mediopago <> '13'
+                AND <fs_medpag>-mediopago <> '18'
+                AND <fs_medpag>-mediopago <> '19'
+                AND <fs_medpag>-mediopago <> 'CU'.
+
+                ls_renglon-moneda    = <fs_medpag>-moneda.
+                ls_renglon-cardnr    = <fs_medpag>-cardnr.
+                ls_renglon-idtxext   = <fs_medpag>-idtxext.
+                ls_renglon-importe   = <fs_medpag>-importe.
+                ls_renglon-mediopago = <fs_medpag>-mediopago.
+                ls_renglon-cardend   = <fs_medpag>-cardend. "Agregado para no perderlo al concatenar
+                lv_idtxext           = ls_renglon-idtxext.
+
+                CONCATENATE ls_renglon-idpos ls_renglon-tienda ls_renglon-fecha ls_renglon-hora ls_renglon-seriepos
+                            ls_renglon-tipodoc ls_renglon-folio ls_renglon-moneda ls_renglon-cardnr
+                            ls_renglon-idtxext ls_renglon-importe ls_renglon-mediopago ls_renglon-cardend INTO ls_detfile-linea SEPARATED BY gc_field_sep.
+
+                APPEND ls_detfile TO lt_detfile.
+              ENDIF.
+
+              IF <fs_medpag>-mediopago = '6'
+                OR <fs_medpag>-mediopago = '7'
+                OR <fs_medpag>-mediopago = '8'.
+
+                lv_cambiar_desc = 'X'.
+              ENDIF.
+
+            ENDLOOP.
+
+            CLEAR ls_renglon2.
+            ls_renglon2-idpos = ls_renglon-idpos.
+            ls_renglon2-tienda = ls_renglon-tienda.
+            ls_renglon2-fecha = ls_renglon-fecha.
+            ls_renglon2-hora = ls_renglon-hora.
+            ls_renglon2-seriepos = ls_renglon-seriepos.
+            ls_renglon2-tipodoc = ls_renglon-tipodoc.
+            ls_renglon2-folio = ls_renglon-folio.
+            ls_renglon2-cardend  = ls_renglon-cardend. "Agregado para no perderlo al concatenar
+            lv_importe_acum = 0.
+            ls_renglon2-moneda    = 'CLP'.
+            ls_renglon2-cardnr    = ''.
+
+            IF lv_cambiar_desc = 'X'.
+              ls_renglon2-idtxext = ls_renglon2-idpos.
+            ELSE.
+              ls_renglon2-idtxext   = lv_idtxext.
+            ENDIF.
+
+            ls_renglon2-mediopago = 'FIDELIDAD'.
+
+            "recorro cupones
+            LOOP AT <fs_cabecera>-cupones ASSIGNING <fs_cupon>.
+
+              LOOP AT <fs_cupon>-detallecupon ASSIGNING <fs_detallecupon>.
+                "Si es un cupón válido agrego el mismo
+                IF <fs_cupon>-promocionid <> 'TCT_DUCHA'.
+                  IF <fs_detallecupon>-pagaiva = 0.
+                    " TKT # 15 - Ahora, el importe de fidelidad se lee de otro campo del JSON y sin considerar el signo
+                    "lv_importe   = <fs_cupon>-datoscupon-valormontofijo_aldia.
+                    lv_importe   = abs( <fs_detallecupon>-valorcupon ).
+                    lv_importe_acum = lv_importe_acum + lv_importe.
+                  ENDIF.
+                ENDIF.
+              ENDLOOP.
+            ENDLOOP.
+
+            IF lv_importe_acum <> 0.
+              ls_renglon2-importe = lv_importe_acum.
+
+              CONCATENATE ls_renglon2-idpos ls_renglon2-tienda ls_renglon2-fecha ls_renglon2-hora ls_renglon2-seriepos
+                          ls_renglon2-tipodoc ls_renglon2-folio ls_renglon2-moneda ls_renglon2-cardnr
+                          ls_renglon2-idtxext ls_renglon2-importe ls_renglon2-mediopago ls_renglon2-cardend INTO ls_detfile-linea SEPARATED BY gc_field_sep.
+
+              APPEND ls_detfile TO lt_detfile.
+            ENDIF.
+
+          ENDIF.
+        CATCH cx_root INTO lo_exception.
+          " Capturar la excepción si el JSON es inválido
+          APPEND <fs_detfile> TO lt_detfile.
+      ENDTRY.
+
+    ENDLOOP.
+
+    REFRESH pt_detfile.
+    pt_detfile[] = lt_detfile[].
+  ENDIF.
+
+  " --- INICIO LÓGICA DE VALIDACIÓN CARDEND UNIFICADA ---
+  " 1. Identificamos y anotamos qué transacciones (idpos) hay que ignorar
+  REFRESH lt_idpos_ignorar.
+
+  LOOP AT pt_detfile ASSIGNING <fs_detfile>.
+    SPLIT <fs_detfile>-linea AT gc_field_sep INTO TABLE lt_campos_plano.
+
+    " Nos aseguramos de tener al menos 13 columnas antes de leer para evitar DUMPS
+    IF lines( lt_campos_plano ) >= 13.
+      READ TABLE lt_campos_plano INDEX 1 INTO lv_idpos.
+      READ TABLE lt_campos_plano INDEX 12 INTO lv_mediopago_plano.
+      READ TABLE lt_campos_plano INDEX 13 INTO lv_cardend_plano.
+
+      IF lv_cardend_plano IS NOT INITIAL AND lv_mediopago_plano IS NOT INITIAL.
+        " Concatenamos para buscar por ejemplo "23-BPE"
+        CONCATENATE lv_mediopago_plano lv_cardend_plano INTO lv_valaper SEPARATED BY '-'.
+
+        " Consultamos a Parvarios
+        CALL FUNCTION '/AUDITAR/GET_PARVARIOS'
+          EXPORTING
+            i_sociedad    = pv_soc
+            i_proceso     = gc_proceso_cbtes
+            i_parametro   = 'CBRIN'
+            i_valaper     = lv_valaper
+          IMPORTING
+            et_dparvarios = lt_parvarios.
+
+        READ TABLE lt_parvarios INDEX 1 ASSIGNING <fs_parv>.
+        IF sy-subrc = 0 AND <fs_parv>-valor = 'X'.
+          " Anotamos este idpos en la "lista negra"
+          APPEND lv_idpos TO lt_idpos_ignorar.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+
+  " 2. Si detectamos transacciones a ignorar, filtramos el archivo
+  IF lt_idpos_ignorar[] IS NOT INITIAL.
+    SORT lt_idpos_ignorar.
+    DELETE ADJACENT DUPLICATES FROM lt_idpos_ignorar.
+
+    REFRESH lt_detfile.
+
+    LOOP AT pt_detfile ASSIGNING <fs_detfile>.
+      " Extraemos solo el idpos (columna 1) descartando el resto en lv_dummy (Aumenta el rendimiento)
+      SPLIT <fs_detfile>-linea AT gc_field_sep INTO lv_idpos lv_dummy.
+
+      " Verificamos si este idpos está en la lista negra
+      READ TABLE lt_idpos_ignorar WITH KEY table_line = lv_idpos TRANSPORTING NO FIELDS BINARY SEARCH.
+
+      IF sy-subrc <> 0.
+        " Si NO está en la lista negra, la conservamos
+        APPEND <fs_detfile> TO lt_detfile.
+      ENDIF.
+    ENDLOOP.
+
+    " Reemplazamos el archivo original con la versión filtrada
+
+    pt_detfile[] = lt_detfile[].
+  ENDIF.
+  " --- FIN LÓGICA DE VALIDACIÓN CARDEND UNIFICADA ---
+
+ENDFORM.                    "inicio_0003
+
+*&---------------------------------------------------------------------*
+*&      Form  get_tarmov_0001
+*&---------------------------------------------------------------------*
+FORM get_tarmov_0001 USING pv_soc
+                           pv_parch
+                           pt_tokens  TYPE /auditar/ia_tyt_tokens
+                           ps_campos  LIKE /auditar/iafl
+                           ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                           value(pv_valor_orig)
+                  CHANGING pv_valor
+                           ps_param_out TYPE /auditar/ia_tys_param_out
+                           pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+
+  pv_valor = pv_valor_orig.
+
+  SHIFT pv_valor LEFT DELETING LEADING '0'.
+  CONDENSE pv_valor.
+
+  CONCATENATE 'CLCOBR|' pv_valor INTO pv_valor.
+ENDFORM.                    "get_tarmov_0001
+
+*&---------------------------------------------------------------------*
+*&      Form  get_cuotas_0001
+*&---------------------------------------------------------------------*
+FORM get_cuotas_0001 USING pv_soc
+                           pv_parch
+                           pt_tokens  TYPE /auditar/ia_tyt_tokens
+                           ps_campos  LIKE /auditar/iafl
+                           ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                           value(pv_valor_orig)
+                  CHANGING pv_valor
+                           ps_param_out TYPE /auditar/ia_tys_param_out
+                           pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: ls_msg        TYPE /auditar/ia_tys_msg_campo.
+
+  IF pv_valor_orig CO ` 0`.
+    pv_valor = '1'.
+  ELSE.
+    pv_valor = pv_valor_orig.
+  ENDIF.
+
+ENDFORM.                    "get_cuotas_0001
+
+*&---------------------------------------------------------------------*
+*&      Form  fin_0001
+*&---------------------------------------------------------------------*
+FORM fin_0001   TABLES   pt_tabla     TYPE /auditar/ia_tyt_cbte
+                USING    pv_soc
+                         pv_parch
+                CHANGING ps_param_out TYPE /auditar/ia_tys_param_out_pos
+                pt_msg       TYPE /auditar/ia_tyt_msg.
+  FIELD-SYMBOLS: <fs_cbtes>       TYPE /auditar/ia_tys_cbte.
+
+  LOOP AT pt_tabla ASSIGNING <fs_cbtes>.
+
+    CHECK <fs_cbtes>-cod_error IS INITIAL.
+    IF <fs_cbtes>-importe = 0.
+      DELETE pt_tabla.
+      CONTINUE.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.                                                    "fin_0001

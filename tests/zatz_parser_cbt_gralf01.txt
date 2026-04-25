@@ -1,0 +1,1598 @@
+*&---------------------------------------------------------------------*
+*& Include          ZATZ_PARSER_CBT_GRALF01                            *
+*&                                                                     *
+*&---------------------------------------------------------------------*
+
+INCLUDE /auditar/rutinas_ia_compadic.
+
+*&---------------------------------------------------------------------*
+*&      Form  get_sociedad_gral
+*&---------------------------------------------------------------------*
+FORM get_sociedad_gral USING pv_soc
+                             pv_parch
+                             pt_tokens  TYPE /auditar/ia_tyt_tokens
+                             ps_campos  LIKE /auditar/iafl
+                             ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                             value(pv_valor_orig)
+                    CHANGING pv_valor
+                             ps_param_out TYPE /auditar/ia_tys_param_out
+                             pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  pv_valor = pv_soc.
+
+ENDFORM.                    "get_sociedad_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_moneda_gral
+*& llamar después de haber parseado la sociedad. Devuelve la moneda
+"& parametrizada por sociedad.
+*&---------------------------------------------------------------------*
+FORM get_moneda_gral USING pv_soc
+                           pv_parch
+                           pt_tokens TYPE /auditar/ia_tyt_tokens
+                           ps_campos LIKE /auditar/iafl
+                           ps_datos  TYPE /auditar/ia_tys_datos_cbte
+                           value(pv_valor_orig)
+                  CHANGING pv_valor
+                           pv_ignore
+                           pt_msg  TYPE /auditar/ia_tyt_msg_campo.
+
+  TYPES: BEGIN OF tys_moneda_soc,
+           bukrs TYPE t001-bukrs,
+           waers TYPE t001-waers,
+         END OF tys_moneda_soc,
+         tyt_moneda_soc TYPE STANDARD TABLE OF tys_moneda_soc.
+
+  STATICS: lt_moneda_soc TYPE tyt_moneda_soc.
+
+  DATA: ls_moneda_soc TYPE tys_moneda_soc,
+        lv_tabix      TYPE sy-tabix.
+
+  FIELD-SYMBOLS: <fs_moneda_soc> TYPE tys_moneda_soc.
+
+  READ TABLE lt_moneda_soc WITH KEY bukrs = ps_datos-sociedad
+                           ASSIGNING <fs_moneda_soc>
+                           BINARY SEARCH.
+  IF sy-subrc <> 0.
+    lv_tabix = sy-tabix.
+    ASSIGN ls_moneda_soc TO <fs_moneda_soc>.
+    <fs_moneda_soc>-bukrs = ps_datos-sociedad.
+    SELECT SINGLE waers FROM t001
+                        INTO <fs_moneda_soc>-waers
+                        WHERE bukrs = ps_datos-sociedad.
+    INSERT <fs_moneda_soc> INTO lt_moneda_soc INDEX lv_tabix.
+  ENDIF.
+
+  pv_valor = <fs_moneda_soc>-waers.
+
+ENDFORM.                    "get_moneda_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_estado_in_gral
+*&---------------------------------------------------------------------*
+FORM get_estado_in_gral USING pv_soc
+                              pv_parch
+                              pt_tokens  TYPE /auditar/ia_tyt_tokens
+                              ps_campos  LIKE /auditar/iafl
+                              ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                              value(pv_valor_orig)
+                     CHANGING pv_valor
+                              ps_param_out TYPE /auditar/ia_tys_param_out
+                              pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  pv_valor = estadoc_in.
+
+ENDFORM.                    "get_estado_in_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_debcred_gral
+*&---------------------------------------------------------------------*
+FORM get_debcred_gral USING pv_soc
+                            pv_parch
+                            pt_tokens  TYPE /auditar/ia_tyt_tokens
+                            ps_campos  LIKE /auditar/iafl
+                            ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                            value(pv_valor_orig)
+                   CHANGING pv_valor
+                            ps_param_out TYPE /auditar/ia_tys_param_out
+                            pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_debcred LIKE /auditar/tjsc-debcred.
+
+* Busco tarjdebito
+
+  CLEAR pv_valor.
+
+  IF pv_valor_orig = gc_debcred_d.
+    pv_valor = 'X'.
+  ELSE.
+    pv_valor = ' '.
+  ENDIF.
+
+ENDFORM.                    "get_debcred_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_nrotarj_from_equi_gral
+*&---------------------------------------------------------------------*
+FORM get_nrotarj_from_equi_gral USING pv_soc
+                                      pv_parch
+                                      pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                      ps_campos  LIKE /auditar/iafl
+                                      ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                      value(pv_valor_orig)
+                             CHANGING pv_valor
+                                      ps_param_out TYPE /auditar/ia_tys_param_out
+                                      pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: ls_msg        TYPE /auditar/ia_tys_msg_campo,
+        lv_tarmov     LIKE /auditar/eqtjcb-tarmov,
+        ls_equitarmov TYPE /auditar/eqtjcb,
+        lv_tabix      LIKE sy-tabix,
+        lv_no_existe.
+
+  STATICS lt_equitarmov TYPE TABLE OF /auditar/eqtjcb.
+
+  FIELD-SYMBOLS: <fs_equitarmov> TYPE /auditar/eqtjcb.
+
+  lv_tarmov = pv_valor_orig.
+
+  SHIFT lv_tarmov LEFT DELETING LEADING space.
+  TRANSLATE lv_tarmov TO UPPER CASE.                     "#EC TRANSLANG
+
+  READ TABLE lt_equitarmov WITH KEY sociedad = ps_datos-sociedad
+                                    tarmov   = lv_tarmov
+                                    tarjdeb  = ps_datos-tarjdebito
+                           ASSIGNING <fs_equitarmov>
+                           BINARY SEARCH.
+
+  IF <fs_equitarmov> IS ASSIGNED.
+    IF NOT <fs_equitarmov>-nrotarj IS INITIAL.
+      pv_valor = <fs_equitarmov>-nrotarj.
+    ELSE.
+      lv_no_existe = 'X'.
+    ENDIF.
+  ELSE.
+    lv_tabix = sy-tabix.
+    SELECT SINGLE sociedad tarmov tarjdeb nrotarj
+                  FROM /auditar/eqtjcb
+                  INTO CORRESPONDING FIELDS OF ls_equitarmov
+                  WHERE sociedad = ps_datos-sociedad
+                    AND tarmov   = lv_tarmov
+                    AND tarjdeb  = ps_datos-tarjdebito.
+    IF sy-subrc = 0.
+      ls_equitarmov-sociedad = ps_datos-sociedad.
+      ls_equitarmov-tarmov   = lv_tarmov.
+      ls_equitarmov-tarjdeb  = ps_datos-tarjdebito.
+      pv_valor = ls_equitarmov-nrotarj.
+    ELSE.
+      lv_no_existe = 'X'.
+    ENDIF.
+    INSERT ls_equitarmov INTO lt_equitarmov INDEX lv_tabix.
+  ENDIF.
+
+  IF lv_no_existe = 'X'.
+    PERFORM armar_y_agregar_msg  USING 'E'
+                                       '/AUDITAR/01'
+                                       '310'
+                                       lv_tarmov
+                                       space
+                                       space
+                                       space
+                                 CHANGING pt_msg.
+  ENDIF.
+
+ENDFORM.                    "get_nrotarj_from_equi_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_nrotarj_ztarmov_gral
+*&---------------------------------------------------------------------*
+FORM get_nrotarj_ztarmov_gral USING pv_soc
+                                    pv_parch
+                                    pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                    ps_campos  LIKE /auditar/iafl
+                                    ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                    value(pv_valor_orig)
+                          CHANGING  pv_valor
+                                    ps_param_out TYPE /auditar/ia_tys_param_out
+                                    pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  STATICS: lt_equitarmov       TYPE STANDARD TABLE OF /auditar/eqtjcb,
+           lv_equitarmov_leida.
+
+  DATA: lv_tabix         TYPE sytabix,
+        lv_cant          TYPE i,
+        lv_nrotarj       TYPE /auditar/nrotarj,
+        lv_clave         LIKE /auditar/eqtjcb-tarmov,
+        lv_mediopago     LIKE /auditar/eqtjcb-tarmov,
+        lv_tarmov        LIKE /auditar/eqtjcb-tarmov,
+        lv_interf_dummy  TYPE string,
+        lv_nrotarj_dummy TYPE string,
+        lv_codret.
+
+  FIELD-SYMBOLS <fs_equitarmov> TYPE /auditar/eqtjcb.
+
+  PERFORM get_compadic_char USING    ps_datos-adic
+                                     'ZTARMOV'
+                                     '0'
+                            CHANGING lv_tarmov
+                                     lv_codret
+                                     pt_msg.
+  SPLIT lv_tarmov AT '|' INTO lv_clave
+                              lv_mediopago.
+
+  IF lv_equitarmov_leida IS INITIAL.
+    CONCATENATE lv_clave '%' INTO lv_clave.
+
+    SELECT sociedad tarmov tarjdeb nrotarj              "#EC CI_GENBUFF
+           FROM /auditar/eqtjcb
+           INTO CORRESPONDING FIELDS OF TABLE lt_equitarmov
+           WHERE tarmov LIKE lv_clave.
+
+    LOOP AT lt_equitarmov ASSIGNING <fs_equitarmov>.
+      SPLIT <fs_equitarmov>-tarmov AT '|' INTO lv_interf_dummy
+                                               <fs_equitarmov>-tarmov
+                                               lv_nrotarj_dummy.
+    ENDLOOP.
+
+    SORT lt_equitarmov BY sociedad tarmov tarjdeb nrotarj.
+    lv_equitarmov_leida = 'X'.
+  ENDIF.
+
+  READ TABLE lt_equitarmov WITH KEY sociedad = ps_datos-sociedad
+                                    tarmov   = lv_mediopago
+                                    tarjdeb  = ps_datos-tarjdebito
+                           BINARY SEARCH
+                           TRANSPORTING NO FIELDS.
+
+  IF sy-subrc = 0.
+    lv_tabix = sy-tabix.
+    LOOP AT lt_equitarmov FROM lv_tabix ASSIGNING <fs_equitarmov>.
+      IF  <fs_equitarmov>-sociedad <> ps_datos-sociedad OR
+          <fs_equitarmov>-tarmov   <> lv_mediopago      OR
+          <fs_equitarmov>-tarjdeb  <> ps_datos-tarjdebito.
+        EXIT.
+      ENDIF.
+
+      ADD 1 TO lv_cant.
+      lv_nrotarj = <fs_equitarmov>-nrotarj.
+
+      IF lv_cant > 1.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+  CASE lv_cant.
+    WHEN 0.
+      PERFORM armar_y_agregar_msg  USING 'E'
+                                         '/AUDITAR/01'
+                                         '310'
+                                         lv_tarmov
+                                         space
+                                         space
+                                         space
+                                   CHANGING pt_msg.
+    WHEN 1.
+      pv_valor = lv_nrotarj.
+    WHEN OTHERS.
+      PERFORM armar_y_agregar_msg  USING 'E'
+                                         '/AUDITAR/01'
+                                         '311'
+                                         lv_tarmov
+                                         space
+                                         space
+                                         space
+                                   CHANGING pt_msg.
+  ENDCASE.
+
+ENDFORM.        "get_nrotarj_ztarmov_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  shift_left_deleting_zero_gral
+*&---------------------------------------------------------------------*
+FORM shift_left_deleting_zero_gral USING pv_soc
+                                         pv_parch
+                                         pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                         ps_campos  LIKE /auditar/iafl
+                                         ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                         value(pv_valor_orig)
+                                CHANGING pv_valor
+                                         ps_param_out TYPE /auditar/ia_tys_param_out
+                                         pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  pv_valor = pv_valor_orig.
+
+  SHIFT pv_valor LEFT DELETING LEADING '0'.
+  CONDENSE pv_valor.
+
+ENDFORM.                    "shift_left_deleting_zero_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_valor_gral
+*&---------------------------------------------------------------------*
+FORM get_valor_gral USING pv_soc
+                          pv_parch
+                          pt_tokens  TYPE /auditar/ia_tyt_tokens
+                          ps_campos  LIKE /auditar/iafl
+                          ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                          value(pv_valor_orig)
+                 CHANGING pv_valor
+                          ps_param_out TYPE /auditar/ia_tys_param_out
+                          pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  pv_valor = pv_valor_orig.
+
+  CONDENSE pv_valor.
+  SHIFT pv_valor LEFT DELETING LEADING '0'.
+  TRANSLATE pv_valor TO UPPER CASE.                      "#EC TRANSLANG
+
+ENDFORM.                    "get_valor_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_importe_gral
+*&---------------------------------------------------------------------*
+FORM get_importe_gral USING pv_soc
+                            pv_parch
+                            pt_tokens  TYPE /auditar/ia_tyt_tokens
+                            ps_campos  LIKE /auditar/iafl
+                            ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                            value(pv_valor_orig)
+                   CHANGING pv_valor
+                            ps_param_out TYPE /auditar/ia_tys_param_out
+                            pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  pv_valor = pv_valor_orig.
+
+  CONDENSE pv_valor.
+  SHIFT pv_valor LEFT DELETING LEADING '0'.
+
+  pv_valor = pv_valor / 100.
+
+ENDFORM.                    "get_importe_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  CONVERTIR_FECHA_AAAAMMDD_GRAL
+*&---------------------------------------------------------------------*
+FORM convertir_fecha_aaaammdd_gral USING pv_soc
+                                         pv_parch
+                                         pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                         ps_campos  LIKE /auditar/iafl
+                                         ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                         value(pv_valor_orig)
+                                CHANGING pv_valor
+                                         ps_param_out TYPE /auditar/ia_tys_param_out
+                                         pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  CONCATENATE pv_valor_orig(4) pv_valor_orig+4(2) pv_valor_orig+6(2)
+              INTO pv_valor.
+
+ENDFORM.                    "CONVERTIR_FECHA_AAAAMMDD_GRAL
+
+
+*&---------------------------------------------------------------------*
+*&      Form  convertir_fecha_ddmmaaaa_gral
+*&---------------------------------------------------------------------*
+FORM convertir_fecha_ddmmaaaa_gral USING pv_soc
+                                         pv_parch
+                                         pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                         ps_campos  LIKE /auditar/iafl
+                                         ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                         value(pv_valor_orig)
+                                CHANGING pv_valor
+                                         ps_param_out TYPE /auditar/ia_tys_param_out
+                                         pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  REPLACE ALL OCCURRENCES OF REGEX '[^0-9]' IN pv_valor_orig WITH ''.
+  CONCATENATE pv_valor_orig+4(4) pv_valor_orig+2(2) pv_valor_orig(2) INTO pv_valor.
+
+ENDFORM.                    "convertir_fecha_ddmmaaaa_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_hora_ddmmaaaaHHMMSS_gral
+*&---------------------------------------------------------------------*
+FORM get_hora_ddmmaaaahhmmss_gral USING pv_soc
+                                        pv_parch
+                                        pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                        ps_campos  LIKE /auditar/iafl
+                                        ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                        value(pv_valor_orig)
+                               CHANGING pv_valor
+                                        ps_param_out TYPE /auditar/ia_tys_param_out
+                                        pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  REPLACE ALL OCCURRENCES OF REGEX '[^0-9]' IN pv_valor_orig WITH ''.
+  CONCATENATE pv_valor_orig+8(2) pv_valor_orig+10(2) pv_valor_orig+12(2) INTO pv_valor.
+
+ENDFORM.                    "get_hora_ddmmaaaaHHMMSS_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  convertir_fecha_ddmmaa_gral
+*&---------------------------------------------------------------------*
+FORM convertir_fecha_ddmmaa_gral USING pv_soc
+                                       pv_parch
+                                       pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                       ps_campos  LIKE /auditar/iafl
+                                       ps_datos   TYPE
+                                       /auditar/ia_tys_datos_cbte
+                                       value(pv_valor_orig)
+                              CHANGING pv_valor
+                                       ps_param_out TYPE /auditar/ia_tys_param_out
+                                       pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_len       TYPE i,
+        lv_anio(2)   TYPE n,
+        lv_anio_f(4) TYPE n,
+        ls_msg       LIKE LINE OF pt_msg.
+
+  lv_len = strlen( pv_valor_orig ).
+  IF lv_len <> 6 OR NOT pv_valor_orig(6) CO c_numbers.
+    ls_msg-tipo  = 'E'.
+    MESSAGE e353 INTO ls_msg-texto.
+    APPEND ls_msg TO pt_msg.
+    EXIT.
+  ENDIF.
+
+  lv_anio = pv_valor_orig+4(2).
+
+  CALL FUNCTION 'CONVERT_YEAR_WITH_THRESHOLD'
+    EXPORTING
+      input  = lv_anio
+    IMPORTING
+      output = lv_anio_f.
+
+  CONCATENATE lv_anio_f pv_valor_orig+2(2) pv_valor_orig(2) INTO
+  pv_valor.
+
+ENDFORM.                    "convertir_fecha_ddmma_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  convertir_fecha_separador_gral
+*&---------------------------------------------------------------------*
+FORM convertir_fecha_separador_gral USING pv_soc
+                                          pv_parch
+                                          pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                          ps_campos  LIKE /auditar/iafl
+                                          ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                          value(pv_valor_orig)
+                                 CHANGING pv_valor
+                                          ps_param_out TYPE /auditar/ia_tys_param_out
+                                          pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: ls_msg      TYPE /auditar/ia_tys_msg_campo,
+        lv_len      TYPE i,
+        lv_fecha(8),
+        lv_error.
+
+  lv_len = strlen( pv_valor_orig ).
+
+  IF lv_len <> 10.
+    lv_error = 'X'.
+  ELSE.
+    CONCATENATE pv_valor_orig+6(4)
+                pv_valor_orig+3(2)
+                pv_valor_orig(2) INTO lv_fecha.
+    IF lv_fecha CN c_numbers.
+      lv_error = 'X'.
+    ELSE.
+      pv_valor = lv_fecha.
+    ENDIF.
+  ENDIF.
+
+  IF lv_error = 'X'.
+    ls_msg-tipo = 'E'.
+    MESSAGE e352(/auditar/01) WITH 'AAAA*MM*DD' INTO ls_msg-texto.
+    APPEND ls_msg TO pt_msg.
+  ENDIF.
+
+ENDFORM.                    "convertir_fecha_separador_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  CONVERT_FECHA_DMAAAA_SEPAR
+*----------------------------------------------------------------------*
+FORM convert_fecha_dmaaaa_separ USING pv_soc
+                                      pv_parch
+                                      pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                      ps_campos  LIKE /auditar/iafl
+                                      ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                      value(pv_valor_orig)
+                             CHANGING pv_valor
+                                      ps_param_out TYPE /auditar/ia_tys_param_out
+                                      pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+  DATA: lv_dia(2)  TYPE n,
+        lv_mes(2)  TYPE n,
+        lv_anio(4) TYPE n.
+  IF pv_valor_orig CS '/'.
+    SPLIT pv_valor_orig AT '/' INTO lv_dia lv_mes lv_anio.
+  ENDIF.
+  IF pv_valor_orig CS '-'.
+    SPLIT pv_valor_orig AT '-' INTO lv_dia lv_mes lv_anio.
+  ENDIF.
+  IF pv_valor_orig CS '.'.
+    SPLIT pv_valor_orig AT '.' INTO lv_dia lv_mes lv_anio.
+  ENDIF.
+  SHIFT lv_dia RIGHT DELETING TRAILING space.
+  OVERLAY lv_dia WITH '00'.
+  SHIFT lv_mes RIGHT DELETING TRAILING space.
+  OVERLAY lv_mes WITH '00'.
+  CONCATENATE lv_anio lv_mes lv_dia INTO pv_valor.
+
+ENDFORM.                    "CONVERT_FECHA_DMAAAA_SEPAR
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_nroestab_gral
+*&---------------------------------------------------------------------*
+FORM get_nroestab_gral USING pv_soc
+                              pv_parch
+                              pt_tokens  TYPE /auditar/ia_tyt_tokens
+                              ps_campos  LIKE /auditar/iafl
+                              ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                              value(pv_valor_orig)
+                     CHANGING pv_valor
+                              ps_param_out TYPE /auditar/ia_tys_param_out
+                              pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+
+  STATICS: lt_estab        TYPE TABLE OF /auditar/es,
+           lv_estab_leidos.
+
+  DATA: lv_nroestab    LIKE /auditar/es-nroestab,
+        lv_codextestab LIKE /auditar/es-codextestab,
+        lv_tabix       TYPE sytabix,
+        lv_cant        TYPE i.
+
+  FIELD-SYMBOLS: <fs_estab> TYPE /auditar/es.
+
+  IF lv_estab_leidos IS INITIAL.
+    SELECT sociedad nrotarj codextestab nroestab        "#EC CI_GENBUFF
+           FROM /auditar/es
+           INTO CORRESPONDING FIELDS OF TABLE lt_estab.
+    SORT lt_estab BY sociedad nrotarj codextestab.
+    lv_estab_leidos = 'X'.
+  ENDIF.
+
+  CLEAR: pv_valor.
+
+  SHIFT pv_valor_orig LEFT DELETING LEADING '0'.
+  CONDENSE pv_valor_orig.
+  TRANSLATE pv_valor_orig TO UPPER CASE.
+  lv_codextestab = pv_valor_orig.
+
+  " Obtengo nro estab segun Auditar
+  READ TABLE lt_estab WITH KEY sociedad    = ps_datos-sociedad
+                               nrotarj     = ps_datos-nrotarj
+                               codextestab = lv_codextestab
+                      TRANSPORTING NO FIELDS
+                      BINARY SEARCH.
+  IF sy-subrc = 0.
+    lv_tabix = sy-tabix.
+    LOOP AT lt_estab ASSIGNING <fs_estab> FROM lv_tabix.
+      IF <fs_estab>-codextestab <> lv_codextestab OR
+         <fs_estab>-nrotarj <> ps_datos-nrotarj OR
+         <fs_estab>-sociedad <> ps_datos-sociedad.
+        EXIT.
+      ENDIF.
+      lv_nroestab = <fs_estab>-nroestab.
+      ADD 1 TO lv_cant.
+    ENDLOOP.
+  ENDIF.
+
+
+  CASE lv_cant.
+    WHEN 0.
+      PERFORM armar_y_agregar_msg  USING    'E'
+                                            '/AUDITAR/01'
+                                            '314'
+                                            ps_datos-sociedad
+                                            ps_datos-nrotarj
+                                            lv_codextestab
+                                            space
+                                   CHANGING pt_msg.
+    WHEN 1.
+      pv_valor = lv_nroestab.
+    WHEN OTHERS.
+      PERFORM armar_y_agregar_msg  USING    'E'
+                                            '/AUDITAR/01'
+                                            '312'
+                                            ps_datos-sociedad
+                                            ps_datos-nrotarj
+                                            lv_codextestab
+                                            space
+                                   CHANGING pt_msg.
+
+  ENDCASE.
+
+ENDFORM.                    "get_nroestab_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_modoing_gral
+*&---------------------------------------------------------------------*
+FORM get_modoing_gral USING pv_soc
+                            pv_parch
+                            pt_tokens  TYPE /auditar/ia_tyt_tokens
+                            ps_campos  LIKE /auditar/iafl
+                            ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                            value(pv_valor_orig)
+                   CHANGING pv_valor
+                            ps_param_out TYPE /auditar/ia_tys_param_out
+                            pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_feclanzam TYPE /auditar/mig-fechalanzam,
+        lv_fecvta    LIKE /auditar/cb-feccbte,
+        lv_soc       LIKE /auditar/saldos-sociedad,
+        lv_nrotarj   LIKE /auditar/saldos-nrotarj,
+        ls_cbte      TYPE /auditar/cb.
+
+* Obtengo la fecha de venta segun interfase
+  lv_soc     = ps_datos-sociedad.
+  lv_nrotarj = ps_datos-nrotarj.
+
+  ls_cbte-sociedad = lv_soc.
+  ls_cbte-feccbte  = ps_datos-feccbte.
+  ls_cbte-fecciel  = ps_datos-fecciel.
+
+  CALL FUNCTION '/AUDITAR/CBTE_GET_FECHA_REF'
+    EXPORTING
+      is_cbte = ls_cbte
+    IMPORTING
+      e_fecha = lv_fecvta.
+
+  " Obtengo la fecha de lanzamiento
+  CALL FUNCTION '/AUDITAR/GET_FECHA_LANZAM'
+    EXPORTING
+      i_sociedad     = lv_soc
+      i_nrotarj      = lv_nrotarj
+    IMPORTING
+      e_fecha_lanzam = lv_feclanzam
+    EXCEPTIONS
+      no_existe      = 1
+      OTHERS         = 2.
+
+  IF sy-subrc EQ 0.
+    IF lv_fecvta < lv_feclanzam.
+      pv_valor = gc_mod_ing_ini.
+    ELSE.
+      pv_valor = gc_mod_ing_auto.
+    ENDIF.
+  ELSE.
+    PERFORM armar_y_agregar_msg  USING 'E' sy-msgid sy-msgno sy-msgv1
+                                       sy-msgv2 sy-msgv3 sy-msgv4
+                                 CHANGING pt_msg.
+  ENDIF.
+
+ENDFORM.                    "get_modoing_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_formato_archivo_gral
+*&---------------------------------------------------------------------*
+FORM get_formato_archivo_gral USING pv_soc
+                                    pv_parch
+                                    pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                    ps_campos  LIKE /auditar/iafl
+                                    ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                    value(pv_valor_orig)
+                           CHANGING pv_valor
+                                    ps_param_out TYPE /auditar/ia_tys_param_out
+                                    pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+
+  DATA: lv_fmto TYPE /auditar/arch-formato.
+
+* Obtiene el formato de archivo
+  SELECT SINGLE formato INTO lv_fmto
+         FROM /auditar/arch WHERE sociedad = pv_soc AND
+                               interfaz = 'C'    AND
+                               codigo   = pv_parch.
+
+
+  IF sy-subrc EQ 0.
+    pv_valor = lv_fmto.
+  ENDIF.
+
+ENDFORM.                    "get_formato_archivo_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_nroestab_conv_gral
+*&---------------------------------------------------------------------*
+FORM get_nroestab_conv_gral USING pv_soc
+                                  pv_parch
+                                  pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                  ps_campos  LIKE /auditar/iafl
+                                  ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                  value(pv_valor_orig)
+                         CHANGING pv_valor
+                                  ps_param_out TYPE /auditar/ia_tys_param_out
+                                  pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_nroestab TYPE /auditar/es-nroestab.
+
+  lv_nroestab = pv_valor_orig.
+
+  CALL FUNCTION 'CONVERSION_EXIT_ATALF_INPUT'
+    EXPORTING
+      input  = lv_nroestab
+    IMPORTING
+      output = lv_nroestab.
+
+  pv_valor = lv_nroestab.
+
+ENDFORM.                    "get_nroestab_conv_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_tipo_plan_gral
+*&---------------------------------------------------------------------*
+FORM get_tipo_plan_gral USING pv_soc
+                              pv_parch
+                              pt_tokens TYPE /auditar/ia_tyt_tokens
+                              ps_campos LIKE /auditar/iafl
+                              ps_datos  TYPE /auditar/ia_tys_datos_cbte
+                              value(pv_valor_orig)
+                     CHANGING pv_valor
+                              pv_ignore
+                              pt_msg  TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_moneda          TYPE waers,
+        lv_cantpag         TYPE /auditar/compadi-valor_numc,
+        lv_cantcuotas_orig TYPE /auditar/compadi-valor_char,
+        ls_msg             TYPE /auditar/ia_tys_msg_campo,
+        lt_msg             TYPE /auditar/ia_tyt_msg_campo,
+        lv_codret.
+
+  CLEAR pv_valor.
+  PERFORM get_compadic_numc USING    ps_datos-adic
+                                     'Z_CUOTAS'
+                                     '0'
+                            CHANGING lv_cantpag
+                                     lv_codret
+                                     lt_msg.
+
+
+  IF NOT lv_codret IS INITIAL.
+    APPEND LINES OF lt_msg TO pt_msg.
+    EXIT.
+  ENDIF.
+
+  PERFORM get_compadic_char USING    ps_datos-adic
+                                     'Z_MONEDA'
+                                     '0'
+                            CHANGING lv_moneda
+                                     lv_codret
+                                     lt_msg.
+
+
+  IF NOT lv_codret IS INITIAL.
+    APPEND LINES OF lt_msg TO pt_msg.
+    EXIT.
+  ENDIF.
+
+  CASE lv_moneda.
+    WHEN 'CLP'.
+      pv_valor =  gc_tipocob_m.
+    WHEN OTHERS.
+      IF lv_cantpag > '1'.
+        pv_valor =  gc_tipocob_a.
+      ELSE.
+        pv_valor =  gc_tipocob_m.
+      ENDIF.
+  ENDCASE.
+
+ENDFORM.                    "get_tipo_plan_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_valor_upper_case_gral
+*&---------------------------------------------------------------------*
+FORM get_valor_upper_case_gral USING pv_soc
+                                     pv_parch
+                                     pt_tokens TYPE /auditar/ia_tyt_tokens
+                                     ps_campos LIKE /auditar/iafl
+                                     ps_datos  TYPE /auditar/ia_tys_datos_cbte
+                                     value(pv_valor_orig)
+                            CHANGING pv_valor
+                                     ps_param_out TYPE /auditar/ia_tys_param_out
+                                     pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  TRANSLATE pv_valor TO UPPER CASE.
+
+ENDFORM.                     "get_valor_upper_case_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_adic_no_null_gral
+*&---------------------------------------------------------------------*
+FORM get_adic_no_null_gral USING pv_soc
+                                 pv_parch
+                                 pt_tokens TYPE /auditar/ia_tyt_tokens
+                                 ps_campos LIKE /auditar/iafl
+                                 ps_datos  TYPE /auditar/ia_tys_datos_cbte
+                                 value(pv_valor_orig)
+                        CHANGING pv_valor
+                                 ps_param_out TYPE /auditar/ia_tys_param_out
+                                 pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  IF pv_valor_orig IS INITIAL OR
+     pv_valor_orig CO ' 0'.
+    ps_param_out-ignore = 'X'.
+  ENDIF.
+
+ENDFORM.                     "get_adic_no_null_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_tipocbte_gral
+*&---------------------------------------------------------------------*
+FORM get_tipocbte_gral USING pv_soc
+                             pv_parch
+                             pt_tokens  TYPE /auditar/ia_tyt_tokens
+                             ps_campos  LIKE /auditar/iafl
+                             ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                             value(pv_valor_orig)
+                    CHANGING pv_valor
+                             ps_param_out TYPE /auditar/ia_tys_param_out
+                             pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: ls_msg               LIKE LINE OF pt_msg,
+        lv_tipo_operacion(4),
+        lv_codret.
+
+  CLEAR pv_valor.
+
+  IF  ps_datos-importe < 0.
+    pv_valor = tipcompc_devol.
+  ELSE.
+    pv_valor = tipcompc_cupon.
+  ENDIF.
+
+ENDFORM.                    "get_tipocbte_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_debcred_tarj_gral
+*&---------------------------------------------------------------------*
+FORM get_debcred_tarj_gral USING pv_soc
+                                 pv_parch
+                                 pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                 ps_campos  LIKE /auditar/iafl
+                                 ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                 value(pv_valor_orig)
+                        CHANGING pv_valor
+                                 ps_param_out TYPE /auditar/ia_tys_param_out
+                                 pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_debcred TYPE /auditar/tjsc-debcred.
+
+  CLEAR pv_valor.
+
+  SELECT SINGLE debcred FROM /auditar/tjsc
+                        INTO lv_debcred
+                        WHERE sociedad = ps_datos-sociedad
+                          AND nrotarj  = ps_datos-nrotarj. "#EC CI_GENBUFF
+
+  IF sy-subrc = 0 AND lv_debcred = gc_debcred_d.
+    pv_valor = 'X'.
+  ENDIF.
+
+ENDFORM.                    "get_debcred_tarj_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_plastico_mascara_gral
+*&---------------------------------------------------------------------*
+FORM get_plastico_mascara_gral USING pv_soc
+                                     pv_parch
+                                     pt_tokens TYPE /auditar/ia_tyt_tokens
+                                     ps_campos LIKE /auditar/iafl
+                                     ps_datos  TYPE /auditar/ia_tys_datos_cbte
+                                     value(pv_valor_orig)
+                            CHANGING pv_valor
+                                     pv_ignore
+                                     pt_msg  TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_nrotarj  LIKE /auditar/tjsc-nrotarj,
+        lv_mascvta  LIKE /auditar/tjsc-mascvta,
+        lv_plastico LIKE /auditar/cb-nroplastico.
+
+  lv_plastico = pv_valor_orig.
+  CONDENSE lv_plastico.
+  SHIFT lv_plastico LEFT DELETING LEADING '0'.
+
+  lv_nrotarj = ps_datos-nrotarj.
+
+* Obtengo mascara para plastico
+  CALL FUNCTION '/AUDITAR/GET_MASCARA_PLASTICO'
+    EXPORTING
+      i_sociedad      = ps_datos-sociedad
+      i_nrotarj       = lv_nrotarj
+      i_tipo          = 'V'
+    IMPORTING
+      e_mascara       = lv_mascvta
+    EXCEPTIONS
+      error_tarjeta   = 1
+      error_operacion = 2
+      OTHERS          = 3.
+
+  IF sy-subrc = 0.
+    IF NOT pv_valor_orig IS INITIAL.
+*     Enmascaro el nro plastico
+      CALL FUNCTION '/AUDITAR/ENMASCARA_PLASTICO'
+        EXPORTING
+          i_plastico         = lv_plastico
+          i_mascara          = lv_mascvta
+          i_x_check_plastico = 'X'
+        IMPORTING
+          e_plastico         = lv_plastico
+        EXCEPTIONS
+          error_mascara      = 1
+          error_plastico     = 2
+          OTHERS             = 3.
+
+      CASE sy-subrc.
+        WHEN 0.
+          pv_valor = lv_plastico.
+        WHEN 2.
+          PERFORM armar_y_agregar_msg USING 'W'
+                                            sy-msgid
+                                            sy-msgno
+                                            sy-msgv1
+                                            sy-msgv2
+                                            sy-msgv3
+                                            sy-msgv4
+                                      CHANGING pt_msg.
+        WHEN OTHERS.
+          PERFORM armar_y_agregar_msg USING 'E'
+                                            sy-msgid
+                                            sy-msgno
+                                            sy-msgv1
+                                            sy-msgv2
+                                            sy-msgv3
+                                            sy-msgv4
+                                      CHANGING pt_msg.
+      ENDCASE.
+    ENDIF.
+  ELSE.
+    PERFORM armar_y_agregar_msg USING 'E'
+                                      '/AUDITAR/01'
+                                      '118'
+                                      lv_nrotarj
+                                      space
+                                      space
+                                      space
+                                CHANGING pt_msg.
+  ENDIF.
+
+ENDFORM.                    "get_plastico_mascara_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_nroplan_gral
+*&---------------------------------------------------------------------*
+FORM get_nroplan_gral USING pv_soc
+                            pv_parch
+                            pt_tokens  TYPE /auditar/ia_tyt_tokens
+                            ps_campos  LIKE /auditar/iafl
+                            ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                            value(pv_valor_orig)
+                   CHANGING pv_valor
+                            pv_ignore
+                            pt_msg     TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_nrotarj       TYPE /auditar/nrotarj,
+        lv_nroestab      TYPE /auditar/nroestab,
+        lv_moneda        TYPE waers,
+        lv_nroplastico   LIKE /auditar/cb-nroplastico,
+        lv_cantpag       LIKE /auditar/pl-cantpagr,
+        lv_fecha         LIKE /auditar/cb-feccbte,
+        lv_nroplan       TYPE /auditar/pl-nroplan,
+        lv_marcacampania TYPE /auditar/marcacampania,
+        lv_tipoplan      TYPE /auditar/tipplancuot,
+        lv_marcdeb       TYPE /auditar/marcdeb,
+        ls_msg           TYPE /auditar/ia_tys_msg_campo,
+        lt_msg           TYPE /auditar/ia_tyt_msg_campo,
+        lv_len           TYPE i,
+        lv_codret,
+        lv_index         LIKE sy-tabix.
+
+
+  CLEAR pv_valor.
+
+  lv_nrotarj           = ps_datos-nrotarj.
+  lv_nroestab          = ps_datos-nroestab.
+  lv_nroplastico       = ps_datos-nroplastico.
+  lv_fecha             = ps_datos-feccbte.
+  lv_marcacampania     = ps_datos-marcacampania.
+
+  PERFORM get_compadic_numc USING    ps_datos-adic
+                                     'Z_CUOTAS'
+                                     '0'
+                            CHANGING lv_cantpag
+                                     lv_codret
+                                     lt_msg.
+
+
+  IF NOT lv_codret IS INITIAL.
+    APPEND LINES OF lt_msg TO pt_msg.
+    EXIT.
+  ENDIF.
+
+
+  PERFORM get_compadic_char USING    ps_datos-adic
+                                     'Z_MONEDA'
+                                     '0'
+                            CHANGING lv_moneda
+                                     lv_codret
+                                     lt_msg.
+
+
+  IF NOT lv_codret IS INITIAL.
+    APPEND LINES OF lt_msg TO pt_msg.
+    EXIT.
+  ENDIF.
+
+  PERFORM get_compadic_char USING    ps_datos-adic
+                                     'Z_TIPOPLAN'
+                                     '0'
+                            CHANGING lv_tipoplan
+                                     lv_codret
+                                     lt_msg.
+
+
+  IF NOT lv_codret IS INITIAL.
+    APPEND LINES OF lt_msg TO pt_msg.
+    EXIT.
+  ENDIF.
+
+
+
+  CALL FUNCTION '/AUDITAR/BUSCAR_PLAN'
+    EXPORTING
+      i_sociedad      = ps_datos-sociedad
+      i_nrotarj       = lv_nrotarj
+      i_nroestab      = lv_nroestab
+      i_moneda        = lv_moneda
+      i_cantpag       = lv_cantpag
+      i_fecha         = lv_fecha
+      i_nroplastico   = lv_nroplastico
+      i_tipoplan      = lv_tipoplan
+      i_marcacampania = lv_marcacampania
+      i_xunique       = 'X'
+    IMPORTING
+      e_nroplan       = lv_nroplan
+    EXCEPTIONS
+      no_encontrado   = 1
+      OTHERS          = 2.
+  IF sy-subrc <> 0.
+    PERFORM armar_y_agregar_msg USING 'E'
+                                      sy-msgid
+                                      sy-msgno
+                                      sy-msgv1
+                                      sy-msgv2
+                                      sy-msgv3
+                                      sy-msgv4
+                                CHANGING pt_msg.
+    EXIT.
+  ENDIF.
+
+  pv_valor = lv_nroplan.
+
+
+ENDFORM.                    "get_nroplan_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_tipoplan_gral
+*&---------------------------------------------------------------------*
+FORM get_tipoplan_gral USING pv_soc
+                             pv_parch
+                             pt_tokens  TYPE /auditar/ia_tyt_tokens
+                             ps_campos  LIKE /auditar/iafl
+                             ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                             value(pv_valor_orig)
+                    CHANGING pv_valor
+                             pv_ignore
+                             pt_msg     TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_cuotas LIKE /auditar/pl-cantpagr,
+        lv_codret.
+
+  CHECK pv_valor IS INITIAL.
+
+  PERFORM get_compadic_numc USING    ps_datos-adic
+                                     'Z_CUOTAS'
+                                     '0'
+                            CHANGING lv_cuotas
+                                     lv_codret
+                                     pt_msg.
+
+
+  CHECK lv_codret IS INITIAL.
+
+  IF lv_cuotas = 0 OR
+     lv_cuotas = 1.
+    pv_valor = gc_tipocob_m.
+  ELSE.
+    pv_valor = gc_tipocob_a.
+  ENDIF.
+
+ENDFORM.                    "get_tipoplan_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_marcacampania_gral
+*&---------------------------------------------------------------------*
+FORM get_marcacampania_gral USING pv_soc
+                                  pv_parch
+                                  pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                  ps_campos  LIKE /auditar/iafl
+                                  ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                  value(pv_valor_orig)
+                         CHANGING pv_valor
+                                  ps_param_out TYPE /auditar/ia_tys_param_out
+                                  pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_cuotas(2)  TYPE n,
+        lt_parvarios  TYPE /auditar/dparvarios_t,
+        lv_valaper    TYPE /auditar/dparv-valaper,
+        lv_grupo      TYPE /auditar/grxes-valor,
+        lt_grupxestab TYPE tyt_grupxestab,
+        ls_msg        TYPE /auditar/ia_tys_msg_campo,
+        lv_marca      TYPE /auditar/marcacampania.
+
+  FIELD-SYMBOLS: <fs_grupxestab> TYPE tys_grupxestab,
+                 <fs_parvarios>  TYPE /auditar/dparv.
+
+  CLEAR lv_marca.
+
+  IF pv_valor_orig CO ` 0`.
+    lv_cuotas = '1'.
+  ELSE.
+    lv_cuotas = pv_valor_orig.
+  ENDIF.
+
+  " Busco el parámetro que identifica grupo utilizado
+  CALL FUNCTION '/AUDITAR/GET_PARVARIOS'
+    EXPORTING
+      i_sociedad    = ps_datos-sociedad
+      i_proceso     = gc_proceso_cont
+      i_parametro   = 'GRPES'
+      i_valaper     = 'ACEPTA_PLAN_GOBIERNO'
+    IMPORTING
+      et_dparvarios = lt_parvarios[].
+
+  " si no existe doy error
+  IF  lt_parvarios[] IS INITIAL.
+    ls_msg-tipo = 'E'.
+    MESSAGE e464 WITH 'GRPES'
+                      'ACEPTA_PLAN_GOBIERNO'
+                 INTO ls_msg-texto.
+    APPEND ls_msg TO pt_msg.
+    EXIT.
+  ENDIF.
+
+  READ TABLE lt_parvarios ASSIGNING <fs_parvarios> INDEX 1.
+  lv_grupo = <fs_parvarios>-valor.
+
+  " Busco el dato cargado en el grupo para el establecimiento
+  PERFORM leer_grupxestab USING ps_datos-sociedad
+                                ps_datos-nrotarj
+                                ps_datos-nroestab
+                                lv_grupo
+                       CHANGING lt_grupxestab.
+
+  "si no existe no se considera el grupo para la búsqueda
+  IF lt_grupxestab[] IS INITIAL.
+    CONCATENATE ps_datos-nrotarj lv_cuotas INTO lv_valaper SEPARATED BY '-'.
+  ELSE.
+    READ TABLE lt_grupxestab ASSIGNING <fs_grupxestab> INDEX 1.
+    CONCATENATE ps_datos-nrotarj <fs_grupxestab>-valor lv_cuotas INTO lv_valaper SEPARATED BY '-'.
+  ENDIF.
+
+  CALL FUNCTION '/AUDITAR/GET_PARVARIOS'
+    EXPORTING
+      i_sociedad    = ps_datos-sociedad
+      i_proceso     = gc_proceso_cbtes
+      i_parametro   = 'CBGOB'
+      i_valaper     = lv_valaper
+    IMPORTING
+      et_dparvarios = lt_parvarios.
+
+  IF NOT lt_parvarios[] IS INITIAL.
+    READ TABLE lt_parvarios INDEX 1 ASSIGNING <fs_parvarios>.
+    SPLIT <fs_parvarios>-valor AT '-' INTO lv_marca lv_cuotas.
+  ENDIF.
+
+  pv_valor = lv_marca.
+
+ENDFORM.                    "get_marcacampania_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  transform_marcacampania_gral
+*&---------------------------------------------------------------------*
+FORM transform_marcacampania_gral USING pv_soc
+                                        pv_parch
+                                        pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                        ps_campos  LIKE /auditar/iafl
+                                        ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                        value(pv_valor_orig)
+                               CHANGING pv_valor
+                                        ps_param_out TYPE /auditar/ia_tys_param_out
+                                        pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_cuotas(2)  TYPE n,
+        lt_parvarios  TYPE /auditar/dparvarios_t,
+        lv_valaper    TYPE /auditar/dparv-valaper,
+        lv_grupo      TYPE /auditar/grxes-valor,
+        lt_grupxestab TYPE tyt_grupxestab,
+        ls_msg        TYPE /auditar/ia_tys_msg_campo,
+        lv_marca      TYPE /auditar/marcacampania.
+
+  FIELD-SYMBOLS: <fs_grupxestab> TYPE tys_grupxestab,
+                 <fs_parvarios>  TYPE /auditar/dparv.
+
+  lv_marca = ps_datos-marcacampania.
+
+  " Busco el parámetro que identifica grupo utilizado
+  CALL FUNCTION '/AUDITAR/GET_PARVARIOS'
+    EXPORTING
+      i_sociedad    = ps_datos-sociedad
+      i_proceso     = gc_proceso_cont
+      i_parametro   = 'GRPES'
+      i_valaper     = 'TRANSFORMACION'
+    IMPORTING
+      et_dparvarios = lt_parvarios[].
+
+  " si no existe parámetro aborto
+  IF  lt_parvarios[] IS INITIAL.
+    ps_param_out-ignore = 'X'.
+    EXIT.
+  ENDIF.
+
+  READ TABLE lt_parvarios ASSIGNING <fs_parvarios> INDEX 1.
+  lv_grupo = <fs_parvarios>-valor.
+
+
+  " Busco el dato cargado en el grupo para el establecimiento
+  PERFORM leer_grupxestab USING ps_datos-sociedad
+                                ps_datos-nrotarj
+                                ps_datos-nroestab
+                                lv_grupo
+                       CHANGING lt_grupxestab.
+
+  "si no existe no se considera el grupo para la búsqueda
+  IF lt_grupxestab[] IS INITIAL.
+    lv_valaper = ps_datos-marcacampania.
+  ELSE.
+    READ TABLE lt_grupxestab ASSIGNING <fs_grupxestab> INDEX 1.
+    CONCATENATE ps_datos-marcacampania <fs_grupxestab>-valor INTO lv_valaper SEPARATED BY '-'.
+  ENDIF.
+
+  " Busqueda específica de transformación
+  CALL FUNCTION '/AUDITAR/GET_PARVARIOS'
+    EXPORTING
+      i_sociedad    = ps_datos-sociedad
+      i_proceso     = gc_proceso_cbtes
+      i_parametro   = 'TRFMC'
+      i_valaper     = lv_valaper
+    IMPORTING
+      et_dparvarios = lt_parvarios.
+
+  IF NOT lt_parvarios[] IS INITIAL.
+    READ TABLE lt_parvarios INDEX 1 ASSIGNING <fs_parvarios>.
+    lv_marca = <fs_parvarios>-valor.
+  ELSE.
+    " Si no hay específico busco genérico
+    IF lt_grupxestab[] IS NOT INITIAL.
+      CONCATENATE '*' <fs_grupxestab>-valor INTO lv_valaper SEPARATED BY '-'.
+
+      CALL FUNCTION '/AUDITAR/GET_PARVARIOS'
+        EXPORTING
+          i_sociedad    = ps_datos-sociedad
+          i_proceso     = gc_proceso_cbtes
+          i_parametro   = 'TRFMC'
+          i_valaper     = lv_valaper
+        IMPORTING
+          et_dparvarios = lt_parvarios.
+      IF NOT lt_parvarios[] IS INITIAL.
+        READ TABLE lt_parvarios INDEX 1 ASSIGNING <fs_parvarios>.
+        lv_marca = <fs_parvarios>-valor.
+      ENDIF.
+
+    ENDIF.
+  ENDIF.
+
+  pv_valor = lv_marca.
+
+ENDFORM.                    "transform_marcacampania_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_cuotas_gral
+*&---------------------------------------------------------------------*
+FORM get_cuotas_gral USING pv_soc
+                           pv_parch
+                           pt_tokens  TYPE /auditar/ia_tyt_tokens
+                           ps_campos  LIKE /auditar/iafl
+                           ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                           value(pv_valor_orig)
+                  CHANGING pv_valor
+                           ps_param_out TYPE /auditar/ia_tys_param_out
+                           pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+  DATA: lv_cuotas(2)  TYPE n,
+        lt_parvarios  TYPE /auditar/dparvarios_t,
+        lv_valaper    TYPE /auditar/dparv-valaper,
+        lv_grupo      TYPE /auditar/grxes-valor,
+        lt_grupxestab TYPE tyt_grupxestab,
+        ls_msg        TYPE /auditar/ia_tys_msg_campo,
+        lv_marca      TYPE /auditar/marcacampania.
+
+  FIELD-SYMBOLS: <fs_grupxestab> TYPE tys_grupxestab,
+                 <fs_parvarios>  TYPE /auditar/dparv.
+
+  CLEAR lv_marca.
+
+  IF pv_valor_orig CO ` 0`.
+    lv_cuotas = '1'.
+  ELSE.
+    lv_cuotas = pv_valor_orig.
+  ENDIF.
+
+  " Busco el parámetro que identifica grupo utilizado
+  CALL FUNCTION '/AUDITAR/GET_PARVARIOS'
+    EXPORTING
+      i_sociedad    = ps_datos-sociedad
+      i_proceso     = gc_proceso_cont
+      i_parametro   = 'GRPES'
+      i_valaper     = 'ACEPTA_PLAN_GOBIERNO'
+    IMPORTING
+      et_dparvarios = lt_parvarios[].
+
+  " si no existe doy error
+  IF  lt_parvarios[] IS INITIAL.
+    ls_msg-tipo = 'E'.
+    MESSAGE e464 WITH 'GRPES'
+                      'ACEPTA_PLAN_GOBIERNO'
+                 INTO ls_msg-texto.
+    APPEND ls_msg TO pt_msg.
+    EXIT.
+  ENDIF.
+
+  READ TABLE lt_parvarios ASSIGNING <fs_parvarios> INDEX 1.
+  lv_grupo = <fs_parvarios>-valor.
+
+  " Busco el dato cargado en el grupo para el establecimiento
+  PERFORM leer_grupxestab USING ps_datos-sociedad
+                                ps_datos-nrotarj
+                                ps_datos-nroestab
+                                lv_grupo
+                       CHANGING lt_grupxestab.
+
+  "si no existe no se considera el grupo para la búsqueda
+  IF lt_grupxestab[] IS INITIAL.
+    CONCATENATE ps_datos-nrotarj lv_cuotas INTO lv_valaper SEPARATED BY '-'.
+  ELSE.
+    READ TABLE lt_grupxestab ASSIGNING <fs_grupxestab> INDEX 1.
+    CONCATENATE ps_datos-nrotarj <fs_grupxestab>-valor lv_cuotas INTO lv_valaper SEPARATED BY '-'.
+  ENDIF.
+
+  CALL FUNCTION '/AUDITAR/GET_PARVARIOS'
+    EXPORTING
+      i_sociedad    = ps_datos-sociedad
+      i_proceso     = gc_proceso_cbtes
+      i_parametro   = 'CBGOB'
+      i_valaper     = lv_valaper
+    IMPORTING
+      et_dparvarios = lt_parvarios.
+
+  IF NOT lt_parvarios[] IS INITIAL.
+    READ TABLE lt_parvarios INDEX 1 ASSIGNING <fs_parvarios>.
+    SPLIT <fs_parvarios>-valor AT '-' INTO lv_marca lv_cuotas.
+  ENDIF.
+
+  pv_valor = lv_cuotas.
+
+ENDFORM.                    "get_cuotas_gral
+
+
+*&---------------------------------------------------------------------*
+*&      Form  leer_grupxestab
+*&---------------------------------------------------------------------*
+FORM leer_grupxestab USING pv_sociedad
+                           pv_nrotarj
+                           pv_nroestab
+                           pv_codgrupo
+                  CHANGING pt_grupxestab TYPE tyt_grupxestab.
+
+  DATA: lv_index           LIKE sy-tabix,
+        ls_grupxestab      TYPE tys_grupxestab,
+        ls_grupxestab_buff TYPE tys_grupxestab_buff.
+
+  FIELD-SYMBOLS: <fs_grupxestab>      TYPE tys_grupxestab,
+                 <fs_grupxestab_buff> TYPE tys_grupxestab_buff.
+
+  STATICS: lt_grupxestab_buff TYPE tyt_grupxestab_buff.
+
+  READ TABLE lt_grupxestab_buff WITH KEY sociedad = pv_sociedad
+                                         nrotarj  = pv_nrotarj
+                                         nroestab = pv_nroestab
+                                         codgrupo = pv_codgrupo
+                                TRANSPORTING NO FIELDS
+                                BINARY SEARCH.
+  lv_index = sy-tabix.
+  IF sy-subrc = 0.
+    LOOP AT lt_grupxestab_buff ASSIGNING <fs_grupxestab_buff>
+                               FROM lv_index.
+
+      IF <fs_grupxestab_buff>-sociedad <> pv_sociedad OR
+         <fs_grupxestab_buff>-nrotarj  <> pv_nrotarj  OR
+         <fs_grupxestab_buff>-nroestab <> pv_nroestab OR
+         <fs_grupxestab_buff>-codgrupo <> pv_codgrupo.
+        EXIT.
+      ENDIF.
+
+      IF <fs_grupxestab_buff>-no_existe = 'X'.
+        EXIT.
+      ENDIF.
+
+      ls_grupxestab-valor = <fs_grupxestab_buff>-valor.
+
+      APPEND ls_grupxestab TO pt_grupxestab.
+    ENDLOOP.
+
+  ELSE.
+    ls_grupxestab_buff-sociedad  = pv_sociedad.
+    ls_grupxestab_buff-nrotarj   = pv_nrotarj.
+    ls_grupxestab_buff-nroestab  = pv_nroestab.
+    ls_grupxestab_buff-codgrupo  = pv_codgrupo.
+
+    SELECT valor FROM /auditar/grxes INTO TABLE pt_grupxestab
+                 WHERE sociedad = pv_sociedad
+                   AND nrotarj  = pv_nrotarj
+                   AND nroestab = pv_nroestab
+                   AND codgrupo = pv_codgrupo.
+    IF sy-subrc = 0.
+      SORT pt_grupxestab BY valor.
+
+      LOOP AT pt_grupxestab ASSIGNING <fs_grupxestab>.
+        ls_grupxestab_buff-valor = <fs_grupxestab>-valor.
+        INSERT ls_grupxestab_buff INTO  lt_grupxestab_buff
+                                  INDEX lv_index.
+        ADD 1 TO lv_index.
+      ENDLOOP.
+    ELSE.
+      ls_grupxestab_buff-no_existe = 'X'.
+      INSERT ls_grupxestab_buff INTO  lt_grupxestab_buff
+                                INDEX lv_index.
+    ENDIF.
+  ENDIF.
+ENDFORM.                    "leer_grupxestab
+
+
+*&---------------------------------------------------------------------*
+*& Form APLANAR_ESTRUCTURA
+*&---------------------------------------------------------------------*
+FORM aplanar_estructura USING ps_data TYPE any
+                              pv_deep_level
+                              pv_field_sep
+                     CHANGING value(pv_level)
+                              pv_registro TYPE string
+                              pt_archivo  TYPE tyt_archivo.
+
+  DATA: lr_desc TYPE REF TO cl_abap_typedescr.
+  DATA: lr_sdes TYPE REF TO cl_abap_structdescr.
+  DATA: ls_comp TYPE cl_abap_structdescr=>component.
+  DATA: lt_comp   TYPE cl_abap_structdescr=>component_table,
+        lv_string TYPE string.
+  FIELD-SYMBOLS: <fs_field> TYPE any.
+
+
+  lr_desc = cl_abap_typedescr=>describe_by_data( ps_data ).
+
+  CASE lr_desc->type_kind.
+
+    WHEN cl_abap_typedescr=>typekind_struct1 OR cl_abap_typedescr=>typekind_struct2.
+*     Para las esructuras, recorrer los campos y llamar al método de nuevo
+      lr_sdes ?= lr_desc.
+      lt_comp = lr_sdes->get_components( ).
+      LOOP AT lt_comp INTO ls_comp.
+        ASSIGN COMPONENT ls_comp-name OF STRUCTURE ps_data TO <fs_field>.
+        IF sy-subrc = 0.
+          PERFORM aplanar_estructura USING    <fs_field>
+                                              pv_deep_level
+                                              pv_field_sep
+                                     CHANGING pv_level
+                                              pv_registro
+                                              pt_archivo.
+        ENDIF.
+      ENDLOOP.
+
+    WHEN cl_abap_typedescr=>typekind_table.
+*     Para las tablas internas, recorrer los registros y llamar al método de nuevo
+      DATA: lv_line TYPE REF TO data.
+      FIELD-SYMBOLS: <fs_tab> TYPE ANY TABLE.
+      FIELD-SYMBOLS: <fs_line> TYPE any.
+
+      ASSIGN ps_data TO <fs_tab>.
+      CREATE DATA lv_line LIKE LINE OF <fs_tab>.
+      ASSIGN lv_line->* TO <fs_line>.
+
+      ADD 1 TO pv_level.
+
+      CHECK pv_level <= pv_deep_level.
+
+      LOOP AT <fs_tab> INTO <fs_line>.
+        PERFORM aplanar_estructura USING    <fs_line>
+                                            pv_deep_level
+                                            pv_field_sep
+                                   CHANGING pv_level
+                                            pv_registro
+                                            pt_archivo.
+        APPEND pv_registro TO pt_archivo.
+        CLEAR pv_registro.
+      ENDLOOP.
+
+
+    WHEN cl_abap_typedescr=>typekind_dref.
+*     Para las referencias de datos, desreferenciar los datos y llamar al método de nuevo
+      FIELD-SYMBOLS: <fs_data> TYPE any.
+
+      ASSIGN ps_data->* TO <fs_data>.
+      IF sy-subrc = 0.
+        PERFORM aplanar_estructura USING    <fs_data>
+                                            pv_deep_level
+                                            pv_field_sep
+                                   CHANGING pv_level
+                                            pv_registro
+                                            pt_archivo.
+      ENDIF.
+
+    WHEN OTHERS.
+*     Para los campos, ir concatenando uno a uno los valores con el separador
+      IF pv_registro IS INITIAL.
+        pv_registro = ps_data.
+      ELSE.
+*        if cl_abap_typedescr=>TYPEKIND_PACKED.
+*        else.
+*        endif.
+        lv_string = ps_data.
+        CONCATENATE pv_registro lv_string INTO pv_registro SEPARATED BY pv_field_sep.
+      ENDIF.
+  ENDCASE.
+
+ENDFORM.                    "aplanar_estructura
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_parametro_archivo_gral
+*&---------------------------------------------------------------------*
+FORM get_parametro_archivo_gral USING pv_soc
+                                      pv_parch
+                                      pt_tokens  TYPE /auditar/ia_tyt_tokens
+                                      ps_campos  LIKE /auditar/iafl
+                                      ps_datos   TYPE /auditar/ia_tys_datos_cbte
+                                      value(pv_valor_orig)
+                             CHANGING pv_valor
+                                      ps_param_out TYPE /auditar/ia_tys_param_out
+                                      pt_msg       TYPE /auditar/ia_tyt_msg_campo.
+
+
+  pv_valor = pv_parch.
+
+ENDFORM.                    "get_parametro_archivo_gral

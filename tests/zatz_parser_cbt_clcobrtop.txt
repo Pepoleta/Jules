@@ -1,0 +1,111 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZATZ_PARSER_CBT_CLCOBRTOP
+*&---------------------------------------------------------------------*
+
+REPORT zatz_parser_cbt_clcobr MESSAGE-ID /auditar/01.
+
+
+* Tipo de datos archivo JSON
+TYPES:
+BEGIN OF tys_medpag,
+         moneda(3)             TYPE c,
+         cardnr(20)            TYPE c,
+         idtxext(40)           TYPE c,
+         importe(30)           TYPE c,
+         mediopago(3)          TYPE c,
+         cardend               TYPE string, " <-- NUEVO CAMPO TKT #33
+       END OF tys_medpag,
+
+       BEGIN OF tys_datoscupon,
+         valormontofijo_aldia(30) TYPE c,
+       END OF tys_datoscupon,
+
+
+       BEGIN OF tys_detallecupon,
+         valorcupon(30)      TYPE c,
+         pagaiva(1)          TYPE c,
+       END OF tys_detallecupon,
+
+       BEGIN OF tys_detallecupon_new,
+         valorcupon(30)      TYPE c, " es el equivalente a *valormontofijo_aldia* de tys_datoscupon.
+         pagaiva(1)          TYPE c,
+       END OF tys_detallecupon_new,
+
+       BEGIN OF tys_cupones,
+         posex(2)           TYPE c,
+         promocionId        TYPE string, "tkt 20
+         detallecupon       TYPE tys_detallecupon OCCURS 0,
+         datoscupon         TYPE tys_datoscupon,
+       END OF tys_cupones,
+
+       BEGIN OF tys_cupones_new,
+         posex(2)           TYPE c,
+         promocionId        TYPE string, "tkt 20
+         detallecupon       TYPE tys_detallecupon_new OCCURS 0,
+         datoscupon         TYPE tys_datoscupon,
+       END OF tys_cupones_new,
+
+       BEGIN OF tys_cabecera,
+         idpos        TYPE string,
+         tienda(8)    TYPE c,
+         fecha(8)     TYPE c,
+         hora(6)      TYPE c,
+         seriepos     TYPE string,
+         tipodoc(2)   TYPE c,
+         folio(30)    TYPE c,
+         medpag       TYPE tys_medpag OCCURS 0,
+         cupones      TYPE tys_cupones OCCURS 0,
+       END OF tys_cabecera,
+
+              BEGIN OF tys_cabecera_new,
+         idpos        TYPE string,
+         tienda(8)    TYPE c,
+         fecha(8)     TYPE c,
+         hora(6)      TYPE c,
+         seriepos     TYPE string,
+         tipodoc(2)   TYPE c,
+         folio(30)    TYPE c,
+         medpag       TYPE tys_medpag OCCURS 0,
+         cupones      TYPE tys_cupones_new OCCURS 0,
+       END OF tys_cabecera_new,
+
+       BEGIN OF tys_json,
+         cabecera TYPE tys_cabecera,
+         href     TYPE string,
+       END OF tys_json,
+       tyt_json TYPE TABLE OF tys_json,
+
+        BEGIN OF tys_datos,
+         cabecera      TYPE tys_cabecera,
+        END OF tys_datos,
+
+        BEGIN OF tys_datos_new,
+         cabecera      TYPE tys_cabecera_new,
+        END OF tys_datos_new,
+
+       " Nuevo registro de achivo de ventas
+       BEGIN OF tys_json_new,
+         tipo           TYPE string,
+         fecha_envio    TYPE string,
+         datos          TYPE tys_datos_new,
+       END OF tys_json_new,
+       tyt_json_new TYPE TABLE OF tys_json_new,
+
+       BEGIN OF tys_renglon,
+         idpos        TYPE string,
+         tienda       TYPE string,
+         fecha        TYPE string,
+         hora         TYPE string,
+         seriepos     TYPE string,
+         tipodoc      TYPE string,
+         folio        TYPE string,
+         moneda       TYPE string,
+         cardnr       TYPE string,
+         idtxext      TYPE string,
+         importe      TYPE string,
+         mediopago    TYPE string,
+         cardend      TYPE string,
+       END OF tys_renglon.
+
+* Separador para archivo plano
+CONSTANTS: gc_field_sep TYPE c VALUE '|'.
