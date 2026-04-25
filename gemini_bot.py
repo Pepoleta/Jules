@@ -81,77 +81,83 @@ class GeminiBot:
     def set_model(self, model_name):
         print(f"Setting Gemini model to: {model_name}")
         try:
-            # Find the model dropdown
-            # It usually contains the text of the currently selected model
+            # Find the model dropdown using exact aria-label from DOM inspection
             dropdown = WebDriverWait(self.driver, 5).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[.//span[contains(text(), 'Pro') or contains(text(), 'Rápido') or contains(text(), 'Pensar')]]"))
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "button[aria-label='Abrir selector de modo']"))
             )
-            current_model = dropdown.text
+            current_model = dropdown.text.strip()
+            print(f"  Current model text: '{current_model}'")
             if model_name.lower() not in current_model.lower():
                 dropdown.click()
-                time.sleep(1)
+                time.sleep(1.5)
                 
-                # Click the option
+                # Click the option in the dropdown menu
                 option = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, f"//span[contains(text(), '{model_name}')]/.."))
+                    EC.element_to_be_clickable((By.XPATH, f"//*[contains(text(), '{model_name}')]"))
                 )
                 option.click()
-                print(f"Model {model_name} selected.")
-                time.sleep(3) # Wait for model switch to complete
+                print(f"  Model switched to {model_name}.")
+                time.sleep(3)  # Wait for model switch to complete
             else:
-                print("Model already selected.")
+                print(f"  Model '{model_name}' already selected.")
         except Exception as e:
-            print(f"Error setting model or model dropdown not found: {e}")
+            print(f"  Error setting model: {e}")
 
     def _upload_files(self, file_paths):
         print(f"Attempting to upload {len(file_paths)} files using native OS automation...")
-        try:
-            import pyautogui
-            
-            # Formateamos la ruta (en windows se pueden pegar las multiples rutas separadas por espacios y entre comillas)
-            if len(file_paths) > 1:
-                file_paths_str = " ".join([f'"{p}"' for p in file_paths])
-            else:
-                file_paths_str = file_paths[0]
-            
-            # Click the '+' button
+        import pyautogui
+        import pyperclip
+        
+        for i, fpath in enumerate(file_paths):
+            print(f"  Uploading file {i+1}/{len(file_paths)}: {os.path.basename(fpath)}")
             try:
-                add_btn = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button[aria-label*='Herramientas'], button[aria-label*='Tools'], button[aria-label*='Abrir'], button[aria-label*='upload']"))
-                )
-                add_btn.click()
-                time.sleep(1)
-            except Exception as e:
-                print(f"Could not click '+' button: {e}")
-                return
+                # Click the '+' button (the upload button, NOT the 'Herramientas'/Tools button)
+                try:
+                    add_btn = WebDriverWait(self.driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, 
+                            "button[aria-label='Abrir el menú para subir archivos']"))
+                    )
+                    add_btn.click()
+                    time.sleep(1.5)
+                except Exception as e:
+                    print(f"  Could not click '+' button: {e}")
+                    return
+                    
+                # Click "Subir archivos" menu item - use async click to avoid blocking on OS dialog
+                try:
+                    upload_menu = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR,
+                            "button[role='menuitem'][aria-label*='Subir archivos']"))
+                    )
+                    self.driver.execute_script(
+                        "var elem = arguments[0]; setTimeout(function() { elem.click(); }, 100);", 
+                        upload_menu)
+                except Exception as e:
+                    print(f"  Could not click 'Subir archivos' menu: {e}")
+                    # Try pressing Escape to close the menu before returning
+                    pyautogui.press('escape')
+                    time.sleep(0.5)
+                    return
+                    
+                time.sleep(2.5)  # Wait for the native Windows file dialog to open
                 
-            # Click "Subir archivos" asynchronously to avoid blocking Selenium thread with OS dialog
-            try:
-                upload_menu = WebDriverWait(self.driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Subir') or contains(text(), 'Upload')]"))
-                )
-                self.driver.execute_script("var elem = arguments[0]; setTimeout(function() { elem.click(); }, 100);", upload_menu)
-            except Exception as e:
-                print(f"Could not click 'Subir archivos' menu: {e}")
-                return
+                # Use clipboard to paste the full file path
+                pyperclip.copy(fpath)
+                time.sleep(0.3)
+                pyautogui.hotkey('ctrl', 'v')
+                time.sleep(0.5)
+                pyautogui.press('enter')
                 
-            time.sleep(2.0) # Wait for the native Windows file dialog to open
-            
-            # Use clipboard to avoid keyboard layout issues with quotes and special characters
-            import pyperclip
-            pyperclip.copy(file_paths_str)
-            time.sleep(0.5)
-            
-            # Paste the file path using native OS keyboard
-            pyautogui.hotkey('ctrl', 'v')
-            time.sleep(0.5)
-            pyautogui.press('enter')
-            
-            print("Files injected via native dialog using clipboard.")
-            time.sleep(5) # Wait for Gemini to process the attachment chip
-            
-        except Exception as e:
-             print(f"Error uploading files: {e}")
+                print(f"  File {i+1} sent to dialog.")
+                
+                # Wait for Gemini to process the attachment chip before uploading the next one
+                time.sleep(4)
+                
+            except Exception as e:
+                print(f"  Error uploading file {i+1}: {e}")
+        
+        print(f"All {len(file_paths)} file(s) upload process completed.")
+        time.sleep(2)  # Extra wait for all chips to settle
 
     def _wait_for_response(self):
         print("Waiting for response...")

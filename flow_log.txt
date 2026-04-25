@@ -1,0 +1,25 @@
+=== STARTING TEST FLOW ===
+Navigating...
+
+--- STEP 1: Upload ajo.txt and ask about food ---
+File path: C:\Users\Auditar\Downloads\nicoa\Research\Jules\tests\ajo.txt
+File exists: True
+Sending prompt 1 with 1 file...
+Response 1: Con los ingredientes que tienes (tomate, ajo, cebolla, aceite de oliva y sal 
+), podés preparar varias opciones sencillas y clásicas. Como tenés una base de sabores muy mediterránea, acá te paso algun
+
+Waiting 5s before step 2...
+
+--- STEP 2: Upload zatz files for optimization analysis ---
+Found 5 zatz files:
+  - zatz_parser_cbt_clcobr.txt (exists: True)
+  - zatz_parser_cbt_clcobrtop.txt (exists: True)
+  - zatz_parser_cbt_gralf01.txt (exists: True)
+  - zatz_parser_cbt_graltop.txt (exists: True)
+  - zatz_rutinas_parser_json.txt (exists: True)
+Sending prompt 2 with 5 files...
+Response 2: Tras analizar los archivos del reporte ZATZ_PARSER_CBT_CLCOBR y sus includes asociados, se han identificado diversas oportunidades para optimizar el rendimiento, especialmente en el procesamiento de g
+
+=== FLOW COMPLETED SUCCESSFULLY ===
+Closing browser in 10s...
+Browser closed.
